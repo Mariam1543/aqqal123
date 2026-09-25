@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Common Logistics Picture</title>
+<meta name="description" content="A standing readiness picture for a land command.">
+<script>
+  // Theme and language before first paint: a flash of the wrong ground is a bug people see.
+  try {
+    var t = localStorage.getItem('clp.theme');
+    if (t === 'light') document.documentElement.dataset.theme = 'light';
+    var w = localStorage.getItem('clp.sideW');
+    if (w) document.documentElement.style.setProperty('--side-w', parseInt(w, 10) + 'px');
+  } catch (e) {}
+</script>
+<link rel="stylesheet" href="/vendor/fonts/fonts.css">
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23070a0e'/%3E%3Crect x='3' y='3' width='10' height='10' rx='2' fill='%234d9fd6'/%3E%3C/svg%3E">
+</head>
+<body>
+<div class="frame" id="frame">
+
+  <header class="top" role="banner">
+    <div class="wordmark">
+      <b>Common Logistics Picture</b>
+      <span id="command-name" class="sub"></span>
+    </div>
+    <div class="top-right">
+      <div class="asof" id="asof" title="How current the picture is">
+        <i class="dot" aria-hidden="true"></i><span id="asof-dtg" class="mono"></span>
+      </div>
+      <button class="btn btn-sm" id="btn-rail" aria-controls="rail" aria-expanded="false">Status</button>
+      <div class="alerts">
+        <button class="btn btn-sm" id="btn-alerts" aria-controls="alerts-pop" aria-expanded="false">
+          Alerts <span class="count" id="alerts-count" hidden>0</span>
+        </button>
+        <div class="pop" id="alerts-pop" role="dialog" aria-label="Alerts" hidden></div>
+      </div>
+      <div class="more">
+        <button class="btn btn-sm" id="btn-more" aria-controls="more-pop" aria-expanded="false" aria-label="More">…</button>
+        <div class="pop" id="more-pop" role="dialog" aria-label="More" hidden></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- wall only -->
+  <div class="ribbon" id="ribbon" aria-label="Situation ribbon"></div>
+
+  <!-- Not in the grid: a fixed drawer at left: var(--side-w). -->
+  <aside class="rail" id="rail" aria-label="Status" aria-hidden="true"></aside>
+
+  <aside class="side" id="side" aria-label="Reading column">
+    <div class="side-handle" id="side-handle" role="separator" aria-orientation="vertical"
+         aria-label="Resize the reading column" tabindex="0"></div>
+    <div class="side-tabs" id="side-tabs" role="tablist" aria-label="Panes"></div>
+    <div class="side-body">
+      <section class="pane" id="detail" role="tabpanel" aria-label="Selected" hidden></section>
+      <section class="pane" id="plan" role="tabpanel" aria-label="Plan" hidden></section>
+      <section class="pane" id="options" role="tabpanel" aria-label="Decide" hidden></section>
+      <section class="pane" id="mission" role="tabpanel" aria-label="Mission" hidden>
+        <div id="mission-body"></div>
+      </section>
+      <section class="pane pane-chat" id="assistant" role="tabpanel" aria-label="Decision agent">
+        <div class="chat-head">
+          <div class="ch-title"><b>Decision agent</b><i class="mode-dot" id="mode-dot"></i><span id="mode-label" class="mute"></span></div>
+          <div class="ch-acts">
+            <button class="btn-sm quiet" id="btn-dock" title="Move the ask bar to the foot">Ask bar</button>
+            <button class="btn-sm quiet" id="btn-clear-map" title="Clear what the agent drew">Clear map</button>
+            <button class="btn-sm quiet" id="btn-clear-chat">Clear</button>
+          </div>
+        </div>
+        <div class="chat" id="chat" aria-live="polite" aria-label="Conversation"></div>
+        <form class="composer" id="chat-form">
+          <button type="button" class="btn-sm quiet" id="btn-guidance" title="Upload the commander's guidance" aria-label="Upload guidance">+</button>
+          <textarea id="chat-input" rows="2" placeholder="Ask the picture a question" aria-label="Ask the picture a question"></textarea>
+          <button type="button" class="btn-sm quiet" id="btn-mic" title="Press to talk" aria-label="Press to talk" hidden>◉</button>
+          <button type="submit" class="btn btn-sm primary" id="btn-ask">Ask</button>
+        </form>
+        <input type="file" id="guidance-file" hidden accept=".txt,.md,.json">
+      </section>
+    </div>
+  </aside>
+
+  <main class="map-wrap" id="map-wrap" aria-label="The picture">
+    <div id="map" data-basemap="imagery" data-zoom="mid"></div>
+
+    <section class="card layers" id="layers" aria-label="Layers"></section>
+
+    <div class="tools" id="tools" role="toolbar" aria-label="Map tools">
+      <button class="btn-sm" data-tool="plan"    title="Draw a plan (P)">Plan</button>
+      <button class="btn-sm" data-tool="measure" title="Measure (M)">Measure</button>
+      <button class="btn-sm" data-tool="range"   title="Range from a point (R)">Range</button>
+      <button class="btn-sm" data-tool="clear"   title="Clear drawings">Clear</button>
+      <button class="btn-sm" data-terrain-open   title="3D terrain">3D</button>
+    </div>
+
+    <section class="legend" id="legend" aria-label="Legend"></section>
+    <div class="coords" id="coords" aria-live="off"></div>
+    <div class="scen" id="scen" hidden></div>
+    <section class="brief" id="brief" aria-label="Guided brief" hidden></section>
+    <section class="terrain" id="terrain" class="no-side" aria-label="Terrain" hidden></section>
+    <section class="feed" id="feed" aria-label="Sensor feed" hidden></section>
+
+    <div class="map-empty" id="map-empty" hidden>
+      <div class="me-card">
+        <div class="lbl">No picture</div>
+        <b>The server is not answering on <code>/api/clp</code></b>
+        <p class="mute">The screen is holding the last figures it had. Nothing here is current.</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- A grid item in its own right: it shares the map's area on the working screen
+       (so it opens over the picture) and takes its own column on the wall. -->
+  <section class="board" id="board" aria-label="Board" hidden>
+    <header class="board-h">
+      <b id="board-title"></b>
+      <nav class="board-nav" id="board-nav" aria-label="Boards"></nav>
+      <div class="board-acts">
+        <button class="btn-sm quiet" data-pop="board" title="Open in its own window">Pop out</button>
+        <button class="btn-sm quiet" data-board="">Close</button>
+      </div>
+      <div class="wall-progress" id="wall-progress" hidden></div>
+    </header>
+    <div class="board-body" id="board-body"></div>
+  </section>
+
+  <div class="dock" id="dock" hidden><div class="dock-slot" id="dock-slot"></div></div>
+
+  <!-- wall only -->
+  <div class="strip" id="strip">
+    <div class="findings" id="findings"></div>
+    <div class="ticker" id="ticker" aria-hidden="true"><div class="tick-run" id="tick-run"></div></div>
+  </div>
+</div>
+
+<!-- overlays -->
+<div class="scrim" id="intro" role="dialog" aria-label="Welcome" hidden></div>
+<div class="scrim" id="palette" role="dialog" aria-label="Find" hidden></div>
+<div class="scrim" id="help" role="dialog" aria-label="Shortcuts" hidden></div>
+<div class="scrim" id="lightbox" role="dialog" aria-label="Image" hidden></div>
+<div class="cmenu" id="cmenu" role="menu" hidden></div>
+<div class="tour" id="tour" role="dialog" aria-label="Tour" hidden></div>
+
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/vendor/milsymbol/milsymbol.js"></script>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

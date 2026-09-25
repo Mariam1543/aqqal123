@@ -1,0 +1,25 @@
+{
+  "name": "clp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Common Logistics Picture — a standing readiness picture for a land command",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "check": "npm run check:sim && npm run check:render && npm run check:plan",
+    "check:sim": "node scripts/check-sim.mjs",
+    "check:render": "node scripts/check-render.mjs",
+    "check:plan": "node scripts/check-plan.mjs",
+    "sweep": "node scripts/sweep.mjs"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

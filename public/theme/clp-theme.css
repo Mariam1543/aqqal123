@@ -1,0 +1,70 @@
+/* ==========================================================================
+   CLP theme — the drop-in token file for the sibling pictures (COP, CIP).
+   Import this before your own stylesheet and address the tokens, not the values.
+
+   NOTE ON THE TYPE SCALE: this file carries the earlier, one-notch-smaller
+   scale. The CLP application itself uses a larger scale (the "reading pass"):
+   micro 10, label 10.5, caption 12.5, body 13.5, value 13, title 15.
+   If you port this file, port the scale with it — do not mix the two.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  --bg:#070a0e;  --s0:#0c1015;  --s1:#11161c;  --s2:#182029;  --s3:#1f2833;
+  --hair:#1c232b;  --hair-2:#2a333e;  --hair-3:#3a4653;
+  --ink:#e8ecf1;  --ink-2:#aab5c2;  --mute:#76828f;  --dim:#4c5663;
+
+  --accent:#4d9fd6;  --accent-2:#6fb6e4;  --accent-soft:rgba(77,159,214,.14);
+  --friendly:var(--accent);
+
+  --ok:#3aa172;  --warn:#d09a3c;  --bad:#cf5449;  --crit:#7d8794;  --normal:#4a5c6e;
+  --hostile:#e2655c;  --hostile-soft:rgba(226,101,92,.14);  --hostile-ink:#f0aaa4;
+
+  --cov-fires:#4d9fd6;  --cov-ad:#9b8bea;  --cov-ew:#d07ab8;
+  --cov-strat:#7fc0e8;  --cov-base:#cdd5de;  --cov-other:#b9c2cd;
+
+  --series-now:#5a6a7c;  --series-potential:#8b7ad6;  --series-potential-ink:#ab9de6;
+
+  --glass:rgba(10,14,19,.94);  --glass-2:rgba(10,14,19,.86);  --glass-3:rgba(7,10,14,.7);
+  --on-st:#070a0e;  --shadow-c:rgba(0,0,0,.55);  --g2:var(--s2);  --det:#3fc9c1;
+
+  --sans:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  /* the earlier scale — see the note above */
+  --fs-micro:9.5px;  --fs-label:10px;  --fs-cap:11.5px;  --fs-body:12.5px;
+  --fs-val:12px;     --fs-title:13.5px;  --fs-h:16px;    --fs-fig:24px;
+  --tr-label:0.09em;
+
+  --rail-w:304px;  --side-w:440px;  --strip-h:124px;  --dock-h:0px;  --r:2px;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg:#e7eaee; --s0:#fff; --s1:#f5f7f9; --s2:#e7ebf0; --s3:#dbe1e8;
+  --hair:#dde2e8; --hair-2:#c6ced7; --hair-3:#a6b1bd;
+  --ink:#101720; --ink-2:#33404f; --mute:#5d6873; --dim:#8b95a1;
+  --accent:#1a6fb0; --accent-2:#14598f; --accent-soft:rgba(26,111,176,.12);
+  --ok:#1f8a5b; --warn:#9d6a0b; --bad:#bf3729; --crit:#5f6b7a; --normal:#94a2b1;
+  --cov-fires:#1a6fb0; --cov-ad:#5b3fc4; --cov-ew:#a3438a; --cov-strat:#2b7fb5;
+  --cov-base:#55606e; --cov-other:#6b7683;
+  --hostile:#bf3729; --hostile-soft:rgba(191,55,41,.1); --hostile-ink:#9e2b1f;
+  --series-now:#7d8a98; --series-potential:#6d5bbf; --series-potential-ink:#5a49a8;
+  --glass:rgba(255,255,255,.96); --glass-2:rgba(255,255,255,.9); --glass-3:rgba(255,255,255,.75);
+  --on-st:#fff; --shadow-c:rgba(20,25,34,.16); --det:#0e8f88;
+}
+
+@media (prefers-contrast: more) {
+  :root { --hair:#384250; --hair-2:#4b5666; --hair-3:#5c6877; --mute:#a5afbd; --dim:#8b95a3; }
+  :root[data-theme="light"] { --hair:#aab3bf; --hair-2:#8e99a7; --hair-3:#6f7a86;
+                              --mute:#3f4a58; --dim:#5f6b7a; }
+}
+
+/* The two channels of status. Only the WASH goes neutral. */
+.st-GREEN   { --st: var(--ok);      --st-fill: var(--normal); }
+.st-AMBER   { --st: var(--warn);    --st-fill: var(--warn); }
+.st-RED     { --st: var(--bad);     --st-fill: var(--bad); }
+.st-BLACK   { --st: var(--crit);    --st-fill: var(--crit); }
+.st-HOSTILE { --st: var(--hostile); --st-fill: var(--hostile); }
+.st-ACCENT  { --st: var(--accent);  --st-fill: var(--accent); }
