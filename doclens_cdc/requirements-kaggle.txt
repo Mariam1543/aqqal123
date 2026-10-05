@@ -1,0 +1,13 @@
+# Runtime dependencies of DocLens + the CDC extension (MinerU is installed separately: pip install -U "mineru[core]")
+pymupdf
+google-genai
+google-auth
+anthropic
+openai
+json_repair
+aiofiles
+huggingface_hub
+tqdm
+numpy
+pillow
+matplotlib
