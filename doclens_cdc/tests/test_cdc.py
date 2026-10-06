@@ -342,48 +342,110 @@ def test_run_cdc_cli_with_fake_gemini(tmp_path, monkeypatch):
 
 
 @requires_doclens
-def test_baseline_mode_uses_vanilla_reader_on_all_pages(tmp_path, monkeypatch):
+@pytest.mark.parametrize("mode,expect_ocr", [("vanilla", False), ("vanilla_ocr", True)])
+def test_single_reader_baselines_read_every_page(tmp_path, monkeypatch, mode, expect_ocr):
+    """Table 1 baselines: screenshots only (vanilla) or screenshots + OCR (DocLens' --phase_name baseline)."""
     _doc(tmp_path, [("clean", 0), ("clean", 0)])
     calls = []
-    proc = _make_processor(tmp_path, "baseline", calls, monkeypatch)
+    proc = _make_processor(tmp_path, mode, calls, monkeypatch)
     r = asyncio.run(proc.process_single_document(_sample()))
     assert [c["agent"] for c in calls] == ["VanillaAgent"]
-    images = [c for c in calls[0]["content"] if c["type"] == "image"]
-    assert len(images) == 2  # every page of the document, no navigation
+    content = calls[0]["content"]
+    assert sum(c["type"] == "image" for c in content) == 2  # every page, no navigation, no crops
+    assert any("OCR of page" in c.get("text", "") for c in content) == expect_ocr
+    assert calls[0]["k"] == 1
     assert r["final_prediction"] == "42" and r["final_score"] == 1.0
     assert "lens_tokens" not in r
 
 
-def test_reproduction_report_matches_mmlongbench_metrics(tmp_path):
+@requires_doclens
+def test_ablation_modes_follow_the_paper(tmp_path, monkeypatch):
+    _doc(tmp_path, [("clean", 0), ("clean", 0), ("clean", 0)])
+
+    # w/o Lens Module: Reasoning Module (k samples + adjudicator) on all pages, screenshot + OCR
+    calls = []
+    proc = _make_processor(tmp_path, "no_lens", calls, monkeypatch)
+    asyncio.run(proc.process_single_document(_sample()))
+    assert [c["agent"] for c in calls] == ["AnswerSampler", "Adjudicator"]
+    texts = [c["text"] for c in calls[0]["content"] if c["type"] == "text"]
+    assert sum("OCR of page" in t for t in texts) == 3 and calls[0]["k"] == 2
+
+    # w/o Reasoning Module: Lens Module, then one answer on the localized evidence
+    calls = []
+    proc = _make_processor(tmp_path, "no_reasoning", calls, monkeypatch)
+    r = asyncio.run(proc.process_single_document(_sample()))
+    assert [c["agent"] for c in calls] == ["PageNavigator", "AnswerSampler"]
+    assert calls[1]["k"] == 1 and r["final_score"] == 1.0
+
+    # Oracle: Reasoning Module on the annotated evidence pages only (page 2 in _sample)
+    calls = []
+    proc = _make_processor(tmp_path, "oracle", calls, monkeypatch)
+    asyncio.run(proc.process_single_document(_sample()))
+    assert [c["agent"] for c in calls] == ["AnswerSampler", "Adjudicator"]
+    texts = [c["text"] for c in calls[0]["content"] if c["type"] == "text"]
+    assert [t for t in texts if "Screenshot of page" in t] == ["---- Screenshot of page 2 ----\n"]
+
+
+def test_paper_common_sense_rule_is_inserted_once():
+    from cdc.prompts import with_paper_common_sense_rule
+
+    prompt = "## Role:\nx\n## Follow these instructions carefully:\n- a\n## Input Format\ny\n## Output Format:\nz"
+    out = with_paper_common_sense_rule(prompt)
+    assert out.count("Rule of Common Sense") == 1
+    assert out.index("Rule of Common Sense") < out.index("## Input Format")
+    assert with_paper_common_sense_rule(out) == out
+
+
+def test_experiment_registry_matches_paper_numbers():
+    sys.path.insert(0, str(PKG_ROOT))
+    from reproduction.experiments import EXPERIMENTS, run_args, substitute
+
+    paper = json.loads((PKG_ROOT / "reproduction" / "paper_numbers.json").read_text())
+    for key, exp in EXPERIMENTS.items():
+        assert key in paper["MMLongBenchDoc"], key  # every runnable experiment has a paper number
+        assert exp["k1"] in (1, 2, 8) and exp["k2"] in (2, 8)
+    assert EXPERIMENTS["pro_doclens"]["navigator"] == "gemini-2.5-pro"  # main result: Pro navigator
+    assert "--phase1_input_mode vanilla" in run_args(EXPERIMENTS["pro_no_ocr"])
+    sub = substitute(EXPERIMENTS["pro_nav_flash"], {"gemini-2.5-pro": "new-pro"})
+    assert sub["model"] == "new-pro" and sub["navigator"] == "gemini-2.5-flash"
+
+
+def test_reproduction_report_against_paper(tmp_path):
     rows = [
-        # answerable, single page, correct
+        # answerable, single page, table, correct; navigator found the page plus one extra
         {"doc_id": "a", "question": "q1", "answer": "5", "final_score": 1.0, "final_extracted_pred": "5",
-         "evidence_pages": "[1]", "evidence_sources": "['Table']"},
-        # answerable, multi page, wrong
+         "evidence_pages": "[1]", "evidence_sources": "['Table']", "pgnav_all_located_pages": "[1, 2]",
+         "doc_type": "Financial report", "model_name": "m"},
+        # answerable, chart + text, wrong; navigator missed one of two pages
         {"doc_id": "a", "question": "q2", "answer": "7", "final_score": 0.0, "final_extracted_pred": "Not answerable",
-         "evidence_pages": "[1, 2]", "evidence_sources": "['Chart', 'Pure-text (Plain-text)']"},
+         "evidence_pages": "[1, 2]", "evidence_sources": "['Chart', 'Pure-text (Plain-text)']",
+         "pgnav_all_located_pages": "[2]", "doc_type": "Financial report", "model_name": "m"},
         # unanswerable, correctly abstained
         {"doc_id": "a", "question": "q3", "answer": "Not answerable", "final_score": 1.0,
-         "final_extracted_pred": "Not answerable", "evidence_pages": "[]", "evidence_sources": "[]"},
-        # failed question: not scored
+         "final_extracted_pred": "Not answerable", "evidence_pages": "[]", "evidence_sources": "[]",
+         "pgnav_all_located_pages": "[]", "doc_type": "Academic paper", "model_name": "m"},
         {"doc_id": "a", "question": "q4", "answer": "1", "cdc_error": "boom"},
     ]
-    path = tmp_path / "r.jsonl"
-    path.write_text("\n".join(json.dumps(r) for r in rows))
-    paper = tmp_path / "paper.json"
-    paper.write_text(json.dumps({"DocLens": {"Acc": 60.0, "UNA": 100.0}}))
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "pro_doclens.jsonl").write_text("\n".join(json.dumps(r) for r in rows))
     out = tmp_path / "report.md"
-    subprocess.run([sys.executable, str(PKG_ROOT / "scripts/report_reproduction.py"), "--run", f"DocLens={path}",
-                    "--paper", str(paper), "--expected_questions", "4", "--out", str(out)],
-                   check=True, capture_output=True)
+    subprocess.run([sys.executable, str(PKG_ROOT / "scripts/report_reproduction.py"), "--results_dir", str(results),
+                    "--expected_questions", "4", "--out", str(out)], check=True, capture_output=True)
 
     sys.path.insert(0, str(PKG_ROOT / "scripts"))
-    from report_reproduction import mmlongbench_metrics
+    from report_reproduction import domain_metrics, metrics
 
-    m = mmlongbench_metrics(rows)
-    assert m["n"] == 3 and m["Acc"] == pytest.approx(2 / 3)
-    # recall = 1/2 (answerable), precision = 1/1 (one non-NA prediction) -> F1 = 2/3
-    assert m["F1"] == pytest.approx(2 / 3)
-    assert m["TAB"] == 1.0 and m["CHA"] == 0.0 and m["SIN"] == 1.0 and m["MUL"] == 0.0 and m["UNA"] == 1.0
+    m = metrics(rows, "MMLongBenchDoc")
+    assert m["n"] == 3 and m["ALL"] == pytest.approx(2 / 3)
+    assert m["TAB"] == 1.0 and m["CHA"] == 0.0 and m["TXT"] == 0.0 and m["FIG"] is None
+    assert m["UNA"] == 1.0 and m["ANS"] == 0.5
+    assert m["F1"] == pytest.approx(2 / 3)  # recall 1/2, precision 1/1
+    assert m["Recall"] == pytest.approx(0.75) and m["Prec"] == pytest.approx(0.75) and m["Pages"] == 1.0
+    d = domain_metrics(rows)
+    assert d["Financial"] == 0.5 and d["Academic"] == 1.0 and d["Brochure"] is None
+
     text = out.read_text()
-    assert "1 failed" in text and "| ↳ difference |  | +6.7 |" in text and "+0.0 |" in text
+    assert "| `pro_doclens` | ours |" in text and "| | paper |" in text
+    assert "-0.9" in text and "+27.8" in text and "-2.5" in text  # ALL 66.7-67.6, UNA 100-72.2, Pages 1.0-3.5
+    assert "1 failed" in text and "Per-domain accuracy" in text

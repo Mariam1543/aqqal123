@@ -29,19 +29,34 @@ evaluation code, and subclasses its `DocLensProcessor`.
 
 ## Step 1: reproduce DocLens (`kaggle/doclens_reproduce_kaggle.ipynb`)
 
-Before adding anything, this notebook reproduces the paper's main results with the **unmodified** DocLens code:
+This notebook re-runs the paper's experiments with the official DocLens code and prints each result next to the paper's number. The paper's numbers are in `reproduction/paper_numbers.json`; the run settings are in `reproduction/experiments.py`.
 
-- the full benchmark (every MMLongBench-Doc question, or FinRAGBench-V);
-- DocLens end-to-end (`--mode doclens`) and the vanilla baseline (`--mode baseline`, DocLens' `--phase_name baseline`);
-- the paper's metrics, via `scripts/report_reproduction.py`. This is a port of MMLongBench-Doc's official `eval_acc_and_f1`/`show_results`: Acc, F1, TXT/LAY/CHA/TAB/IMG and SIN/MUL/UNA. It prints the difference to the numbers you copy from the paper.
+| Tier | Paper experiments |
+|---|---|
+| 1 | Table 1, Gemini-2.5-Pro: Vanilla (58.1), +OCR (63.3), **DocLens (67.6)** |
+| 2 | Table 1, Gemini-2.5-Flash: Vanilla, +OCR, DocLens |
+| 3 | Pro ablations: Table 2 (w/o Lens, w/o Reasoning), Table 3 (navigator backbones, oracle pages), Table 4 (w/o sampling, w/o OCR), Table 6 (K=2) |
+| 4 | Flash / Flash-Lite ablations: Tables 2, 4, 11 |
 
-To match the paper, three things must hold:
+The report (`scripts/report_reproduction.py`) also gives the page-retrieval numbers of Tables 3–4 and the per-domain breakdown of Table 10.
 
-1. **Same models.** Gemini 2.5 Pro answers, 2.5 Flash-Lite navigates and 2.5 Flash scores. New Gemini API keys can no longer call these, so the notebook supports **Vertex AI** (DocLens' original setup) through a `GCP_SA_KEY` service-account secret. Section 3 tests each model and states whether the run counts as a reproduction or as a re-run with substitute models.
-2. **Same settings.** Set the number of candidates (`PHASE1_K`, `PHASE2_K`) from the paper's implementation details, because the repository's scripts disagree with each other. Temperature 0.7 and 200 DPI are DocLens defaults.
-3. **Tolerance.** Sampling at temperature 0.7 means a faithful reproduction lands within about 1–2 points of the paper, not on its exact digits.
+**The released repository's defaults are not the paper's main setting:**
+- `main.py` hard-codes Gemini-2.5-Flash-Lite as the Page Navigator. The paper's 67.6 uses Gemini-2.5-Pro (Table 3).
+- The end-to-end script uses K=2. The paper uses Te = Ta = 8 (Appendix D.1).
+- The Adjudicator prompt lacks the "Rule of Common Sense" printed in Appendix A. `--paper_prompts` adds it.
 
-The parsed benchmark under `full/clean` is then reused for the novelty experiments (step 2 below).
+Together these defaults correspond to the paper's cheaper "Hybrid" variant (64.0), not its headline result. The notebook uses the paper's settings.
+
+**Not re-runnable** (cite the paper instead):
+- the Claude-4-Sonnet rows: the released Claude path crashes;
+- SimpleDoc, MACT, M3DocRAG, MDocAgent, GPT-4o and o4-mini;
+- the human-expert score;
+- Figure 4: its prompts are not released;
+- latency.
+
+Qwen3-VL-8B (Table 9) needs a separate API account.
+
+**Same results require the same models.** Gemini 2.5 is no longer offered to new Gemini API keys. The notebook therefore supports Vertex AI through a `GCP_SA_KEY` service-account secret and tests every model before running. With substitutes (`MODEL_MAP`), report the runs as a re-run, not a reproduction. Sampling at temperature 0.7 means a faithful reproduction lands within about 1–2 points of the paper.
 
 ## Step 2: the novelty (`kaggle/doclens_cdc_kaggle.ipynb`)
 
@@ -58,9 +73,10 @@ The parsed benchmark under `full/clean` is then reused for the novelty experimen
 | `cdc/degradation.py` | Synthetic degradations (blur, noise, jpeg, lowres, fade, mixed × severity 1–3) |
 | `run_cdc.py` | Entry point (the equivalent of DocLens' `main.py`) |
 | `scripts/` | Data download, subset selection, degraded variants, MinerU parsing, calibration, analysis |
-| `kaggle/doclens_reproduce_kaggle.ipynb` | Step 1: full reproduction of DocLens (baseline + DocLens, paper metrics) |
+| `kaggle/doclens_reproduce_kaggle.ipynb` | Step 1: re-runs the paper's Tables 1–4, 6, 10, 11 and compares with the paper |
+| `reproduction/` | The paper's numbers (`paper_numbers.json`) and the settings of every re-runnable row (`experiments.py`) |
 | `kaggle/doclens_cdc_kaggle.ipynb` | Step 2: the confidence-gated abstention experiments |
-| `scripts/report_reproduction.py` | MMLongBench-Doc Acc/F1 and breakdowns, compared with the paper |
+| `scripts/report_reproduction.py` | Our results next to the paper's, cell by cell |
 | `tests/` | Offline tests (no API, no GPU). They run against the real DocLens code with a fake LLM |
 
 ## Run it on Kaggle
@@ -95,8 +111,9 @@ python scripts/analyze_results.py results/*_analyze.jsonl --out_dir results/repo
 
 | `--mode` | What runs | Use |
 |---|---|---|
-| `baseline` | DocLens' vanilla baseline: the model reads every page once | Paper's "without DocLens" row |
-| `doclens` | Unmodified DocLens end-to-end: Lens → Sampler (k) → Adjudicator | Reproduction and the main baseline for CDC |
+| `vanilla` / `vanilla_ocr` | The model reads every page once (screenshots / + OCR) | Table 1 baselines |
+| `doclens` | Unmodified DocLens end-to-end: Lens → Sampler (k) → Adjudicator | Table 1, and the main baseline for CDC |
+| `no_lens` / `no_reasoning` / `oracle` | The paper's ablations | Tables 2 and 3 |
 | `cdc` | Lens → CDC → only the path the gate picks | Deployment numbers and real cost |
 | `analyze` | Lens → CDC → **all** paths (abstain, correct, DocLens) on the same Lens output | Threshold sweeps, over-refinement, oracle and ablations |
 
