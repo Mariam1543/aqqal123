@@ -339,3 +339,51 @@ def test_run_cdc_cli_with_fake_gemini(tmp_path, monkeypatch):
     assert "cdc_error" not in rec, rec.get("cdc_error")
     assert rec["cdc_decision"] == CORRECT and rec["final_score"] == 1.0 and rec["doclens_score"] == 1.0
     assert "judge-model" in seen_models and "gemini-2.5-flash-lite" in seen_models
+
+
+@requires_doclens
+def test_baseline_mode_uses_vanilla_reader_on_all_pages(tmp_path, monkeypatch):
+    _doc(tmp_path, [("clean", 0), ("clean", 0)])
+    calls = []
+    proc = _make_processor(tmp_path, "baseline", calls, monkeypatch)
+    r = asyncio.run(proc.process_single_document(_sample()))
+    assert [c["agent"] for c in calls] == ["VanillaAgent"]
+    images = [c for c in calls[0]["content"] if c["type"] == "image"]
+    assert len(images) == 2  # every page of the document, no navigation
+    assert r["final_prediction"] == "42" and r["final_score"] == 1.0
+    assert "lens_tokens" not in r
+
+
+def test_reproduction_report_matches_mmlongbench_metrics(tmp_path):
+    rows = [
+        # answerable, single page, correct
+        {"doc_id": "a", "question": "q1", "answer": "5", "final_score": 1.0, "final_extracted_pred": "5",
+         "evidence_pages": "[1]", "evidence_sources": "['Table']"},
+        # answerable, multi page, wrong
+        {"doc_id": "a", "question": "q2", "answer": "7", "final_score": 0.0, "final_extracted_pred": "Not answerable",
+         "evidence_pages": "[1, 2]", "evidence_sources": "['Chart', 'Pure-text (Plain-text)']"},
+        # unanswerable, correctly abstained
+        {"doc_id": "a", "question": "q3", "answer": "Not answerable", "final_score": 1.0,
+         "final_extracted_pred": "Not answerable", "evidence_pages": "[]", "evidence_sources": "[]"},
+        # failed question: not scored
+        {"doc_id": "a", "question": "q4", "answer": "1", "cdc_error": "boom"},
+    ]
+    path = tmp_path / "r.jsonl"
+    path.write_text("\n".join(json.dumps(r) for r in rows))
+    paper = tmp_path / "paper.json"
+    paper.write_text(json.dumps({"DocLens": {"Acc": 60.0, "UNA": 100.0}}))
+    out = tmp_path / "report.md"
+    subprocess.run([sys.executable, str(PKG_ROOT / "scripts/report_reproduction.py"), "--run", f"DocLens={path}",
+                    "--paper", str(paper), "--expected_questions", "4", "--out", str(out)],
+                   check=True, capture_output=True)
+
+    sys.path.insert(0, str(PKG_ROOT / "scripts"))
+    from report_reproduction import mmlongbench_metrics
+
+    m = mmlongbench_metrics(rows)
+    assert m["n"] == 3 and m["Acc"] == pytest.approx(2 / 3)
+    # recall = 1/2 (answerable), precision = 1/1 (one non-NA prediction) -> F1 = 2/3
+    assert m["F1"] == pytest.approx(2 / 3)
+    assert m["TAB"] == 1.0 and m["CHA"] == 0.0 and m["SIN"] == 1.0 and m["MUL"] == 0.0 and m["UNA"] == 1.0
+    text = out.read_text()
+    assert "1 failed" in text and "| ↳ difference |  | +6.7 |" in text and "+0.0 |" in text

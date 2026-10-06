@@ -27,6 +27,24 @@ question + doc → │ Page Navigator (k samples) → Element Localizer│
 No DocLens file is modified. The extension imports DocLens' agents, prompts, Gemini wrapper and
 evaluation code, and subclasses its `DocLensProcessor`.
 
+## Step 1: reproduce DocLens (`kaggle/doclens_reproduce_kaggle.ipynb`)
+
+Before adding anything, this notebook reproduces the paper's main results with the **unmodified** DocLens code:
+
+- the full benchmark (every MMLongBench-Doc question, or FinRAGBench-V);
+- DocLens end-to-end (`--mode doclens`) and the vanilla baseline (`--mode baseline`, DocLens' `--phase_name baseline`);
+- the paper's metrics, via `scripts/report_reproduction.py`. This is a port of MMLongBench-Doc's official `eval_acc_and_f1`/`show_results`: Acc, F1, TXT/LAY/CHA/TAB/IMG and SIN/MUL/UNA. It prints the difference to the numbers you copy from the paper.
+
+To match the paper, three things must hold:
+
+1. **Same models.** Gemini 2.5 Pro answers, 2.5 Flash-Lite navigates and 2.5 Flash scores. New Gemini API keys can no longer call these, so the notebook supports **Vertex AI** (DocLens' original setup) through a `GCP_SA_KEY` service-account secret. Section 3 tests each model and states whether the run counts as a reproduction or as a re-run with substitute models.
+2. **Same settings.** Set the number of candidates (`PHASE1_K`, `PHASE2_K`) from the paper's implementation details, because the repository's scripts disagree with each other. Temperature 0.7 and 200 DPI are DocLens defaults.
+3. **Tolerance.** Sampling at temperature 0.7 means a faithful reproduction lands within about 1–2 points of the paper, not on its exact digits.
+
+The parsed benchmark under `full/clean` is then reused for the novelty experiments (step 2 below).
+
+## Step 2: the novelty (`kaggle/doclens_cdc_kaggle.ipynb`)
+
 ## What is in this folder
 
 | Path | Purpose |
@@ -40,7 +58,9 @@ evaluation code, and subclasses its `DocLensProcessor`.
 | `cdc/degradation.py` | Synthetic degradations (blur, noise, jpeg, lowres, fade, mixed × severity 1–3) |
 | `run_cdc.py` | Entry point (the equivalent of DocLens' `main.py`) |
 | `scripts/` | Data download, subset selection, degraded variants, MinerU parsing, calibration, analysis |
-| `kaggle/doclens_cdc_kaggle.ipynb` | The end-to-end Kaggle notebook |
+| `kaggle/doclens_reproduce_kaggle.ipynb` | Step 1: full reproduction of DocLens (baseline + DocLens, paper metrics) |
+| `kaggle/doclens_cdc_kaggle.ipynb` | Step 2: the confidence-gated abstention experiments |
+| `scripts/report_reproduction.py` | MMLongBench-Doc Acc/F1 and breakdowns, compared with the paper |
 | `tests/` | Offline tests (no API, no GPU). They run against the real DocLens code with a fake LLM |
 
 ## Run it on Kaggle
@@ -75,7 +95,8 @@ python scripts/analyze_results.py results/*_analyze.jsonl --out_dir results/repo
 
 | `--mode` | What runs | Use |
 |---|---|---|
-| `doclens` | Unmodified DocLens end-to-end: Lens → Sampler (k) → Adjudicator | Baseline |
+| `baseline` | DocLens' vanilla baseline: the model reads every page once | Paper's "without DocLens" row |
+| `doclens` | Unmodified DocLens end-to-end: Lens → Sampler (k) → Adjudicator | Reproduction and the main baseline for CDC |
 | `cdc` | Lens → CDC → only the path the gate picks | Deployment numbers and real cost |
 | `analyze` | Lens → CDC → **all** paths (abstain, correct, DocLens) on the same Lens output | Threshold sweeps, over-refinement, oracle and ablations |
 

@@ -32,6 +32,8 @@ def main():
     p.add_argument("--table", default="False", help="DocLens parses with table recognition off")
     p.add_argument("--batch_size", type=int, default=150)
     p.add_argument("--extra_args", default="", help="Extra CLI args passed to mineru")
+    p.add_argument("--keep_debug_files", action="store_true",
+                   help="Keep MinerU's per-page debug PDFs (layout/span/origin); DocLens never reads them")
     args = p.parse_args()
 
     docs = Path(args.root) / "data" / args.dataset_name / "documents"
@@ -78,6 +80,8 @@ def main():
             for f in src.iterdir():
                 # rename p000123.md -> <page>.md, p000123_middle.json -> <page>_middle.json, ...
                 name = f.name.replace(stem, page, 1) if f.name.startswith(stem) else f.name
+                if f.suffix == ".pdf" and not args.keep_debug_files:
+                    continue  # saves several GB on the full benchmark
                 shutil.move(str(f), str(dst / name))
         if missing:
             print(f"  {missing} pages produced no MinerU output (blank pages?); wrote empty markdown")

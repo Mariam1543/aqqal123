@@ -26,7 +26,8 @@ def parse_args():
     p.add_argument("--dataset_name", default="MMLongBenchDoc")
     p.add_argument("--samples", required=True, help="JSON list of questions (DocLens samples format)")
     p.add_argument("--variant", default=None, help="Label stored with every result (e.g. blur_s2)")
-    p.add_argument("--mode", choices=["doclens", "cdc", "analyze"], default="cdc")
+    p.add_argument("--mode", choices=["baseline", "doclens", "cdc", "analyze"], default="cdc",
+                   help="baseline = DocLens' vanilla baseline, doclens = DocLens end-to-end, cdc/analyze = with CDC")
     p.add_argument("--output", required=True, help="JSONL output; re-running resumes from it")
     p.add_argument("--limit", type=int, default=0, help="Only the first N questions")
 
@@ -39,7 +40,8 @@ def parse_args():
     g.add_argument("--api_key_env", default="GEMINI_API_KEY",
                    help="Env var / Kaggle secret holding a Google AI Studio key")
     g.add_argument("--use_vertex", action="store_true",
-                   help="Use DocLens' original Vertex AI client (GOOGLE_CLOUD_PROJECT) instead of an API key")
+                   help="Use Vertex AI like the original DocLens (needs GOOGLE_CLOUD_PROJECT and "
+                        "GOOGLE_APPLICATION_CREDENTIALS) instead of an API key")
     g.add_argument("--rpm", type=float, default=0, help="Max Gemini requests per minute (0 = unlimited)")
     g.add_argument("--max_concurrent", type=int, default=4)
 
@@ -90,7 +92,13 @@ async def main():
     from cdc.llm_setup import configure_gemini, get_secret
     from cdc.processor import CDCDocLensProcessor
 
-    if not args.use_vertex:
+    if args.use_vertex:
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+        if not project:
+            sys.exit("--use_vertex needs GOOGLE_CLOUD_PROJECT (and GOOGLE_APPLICATION_CREDENTIALS).")
+        configure_gemini(rpm=args.rpm, eval_model=args.eval_model, vertex_project=project,
+                         vertex_location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-east1"))
+    else:
         key = get_secret(args.api_key_env)
         if not key:
             sys.exit(f"Set {args.api_key_env} (env var or Kaggle secret) or pass --use_vertex.")

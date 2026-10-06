@@ -8,7 +8,8 @@ DocLens + Confidence and Degradation Check (CDC).
                                                               with degradation-aware prompts
 
 Modes
-  doclens : the unmodified DocLens end-to-end pipeline (baseline)
+  baseline: DocLens' vanilla baseline (backbone reads all pages once; DocLens' main.py --phase_name baseline)
+  doclens : the unmodified DocLens end-to-end pipeline
   cdc     : the gated pipeline above
   analyze : computes the CDC report AND runs every path (abstain, correct, doclens) for
             every question, so thresholds can be swept offline (scripts/analyze_results.py)
@@ -90,7 +91,7 @@ class CDCDocLensProcessor(DocLensProcessor):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        if mode not in ("doclens", "cdc", "analyze"):
+        if mode not in ("baseline", "doclens", "cdc", "analyze"):
             raise ValueError(f"Unknown mode {mode}")
         if abstain_policy not in ("single_pass", "lens_answer"):
             raise ValueError(f"Unknown abstain policy {abstain_policy}")
@@ -287,6 +288,18 @@ class CDCDocLensProcessor(DocLensProcessor):
             flags=re.IGNORECASE,
         )
         data["cdc_mode"] = self.mode
+
+        if self.mode == "baseline":
+            # DocLens' vanilla baseline: the backbone reads every page (screenshot + OCR) once.
+            start = time.time()
+            d, tokens = await self.vanilla_reader.process(dict(data))
+            data["final_prediction"] = d.get("cand1_prediction", "")
+            data["final_analysis"] = d.get("cand1_analysis", "")
+            data["final_tokens"] = tokens
+            data["final_time_sec"] = time.time() - start
+            if self.evaluate and "answer" in data:
+                await self._score(data, ["final_"])
+            return data
 
         # Lens Module
         start = time.time()
