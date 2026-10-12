@@ -28,7 +28,7 @@ adaptive-astar-reimplementation/
 ├── results/                   reproduced_results.csv, comparison.{csv,md}, robustness.{csv,md}, environment.json
 ├── figures/                   PNG figures for the report
 ├── docs/                      01_analysis_and_feasibility.md, 02_reproduction_results.md
-├── kaggle/                    adaptive_astar_kaggle.ipynb (Kaggle runner)
+├── kaggle/                    step-by-step notebook (+ builder) and one-click runner notebook
 └── tests/test_core.py         unit tests
 ```
 
@@ -80,13 +80,26 @@ Over 150 random maps, the direction of every effect is confirmed. The length and
 
 ### Running on Kaggle
 
-Open `kaggle/adaptive_astar_kaggle.ipynb` on Kaggle (*File → Import Notebook*). It runs the tests, all experiments, the timing study and the figures, then shows the results inline. Use the default CPU accelerator; no GPU is needed. A full run takes about 5–10 minutes; set `QUICK = True` for a smoke run of about 1 minute.
+There are two notebooks in `kaggle/`. Both run on CPU only.
 
-There are two ways to give the notebook the code:
-- **GitHub:** switch on *Settings → Internet*. The notebook clones the public repository branch set in its first code cell.
-- **Offline:** upload this folder (or a zip of it) as a Kaggle Dataset and *Add Input*. The notebook finds it under `/kaggle/input` automatically.
+- **`adaptive_astar_step_by_step.ipynb` — recommended for submission.** It is fully self-contained: no Internet, no uploads, just *File → Import Notebook* and *Run All*. Every part of the method is in its own explained cell, and each experiment prints its paper-vs-ours table and figure underneath:
+  1. grid model;
+  2. adaptive weight (Eq. 6) and hybrid heuristic (Eq. 7);
+  3. A\* / Dijkstra / bidirectional A\*;
+  4. redundant point deletion;
+  5. metrics;
+  6. sanity checks;
+  7. proxy maps rebuilt from their seeds;
+  8. Tables 1–5;
+  9. headline comparison;
+  10. paired timing;
+  11. 150-map robustness study with Wilcoxon tests;
+  12. pruning sensitivity.
 
-Outputs are written to `/kaggle/working/adaptive_astar_outputs.zip`, available in the *Output* tab. The notebook was tested on Python 3.11 with both current library versions and an older stack (numpy 1.26, pandas 2.2, scipy 1.13, matplotlib 3.8).
+  A full run takes about 1–5 minutes; set `QUICK = True` for a smoke run. The code cells are generated from `src/` by `kaggle/build_step_by_step_notebook.py`, so they always match the tested library.
+- `adaptive_astar_kaggle.ipynb` runs the repository scripts in one go. It clones the public repository (needs *Settings → Internet* on), or reads the folder uploaded as a Kaggle Dataset. Outputs go to `/kaggle/working/adaptive_astar_outputs.zip`.
+
+Both notebooks were tested on Python 3.11 with an older library stack (numpy 1.26, pandas 2.2, scipy 1.13, matplotlib 3.8). Path length, expanded nodes and corners are identical on every machine. Planning times vary with the CPU, and the 30×30 time reduction varies the most, because that search takes under 1 ms.
 
 ### Using the library directly
 
