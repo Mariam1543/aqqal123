@@ -77,6 +77,16 @@ Adaptive A\* vs A\*, mean over the three maps (Tables 2-4):
 
 Over 150 random maps, the direction of every effect is confirmed. The length and smoothness gains come from the pruning step, and the adaptive search alone is not optimal. Full analysis: `docs/02_reproduction_results.md` §7.
 
+### Running on Kaggle
+
+Open `kaggle/adaptive_astar_kaggle.ipynb` on Kaggle (*File → Import Notebook*). It runs the tests, all experiments, the timing study and the figures, then shows the results inline. Use the default CPU accelerator; no GPU is needed. A full run takes about 5–10 minutes; set `QUICK = True` for a smoke run of about 1 minute.
+
+There are two ways to give the notebook the code:
+- **GitHub:** switch on *Settings → Internet*. The notebook clones the public repository branch set in its first code cell.
+- **Offline:** upload this folder (or a zip of it) as a Kaggle Dataset and *Add Input*. The notebook finds it under `/kaggle/input` automatically.
+
+Outputs are written to `/kaggle/working/adaptive_astar_outputs.zip`, available in the *Output* tab. The notebook was tested on Python 3.11 with both current library versions and an older stack (numpy 1.26, pandas 2.2, scipy 1.13, matplotlib 3.8).
+
 ### Using the library directly
 
 ```python
