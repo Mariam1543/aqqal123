@@ -156,10 +156,11 @@ These are listed in Q7. With documented assumptions, the **trends** should be re
 | M10 | Order of pruning (anchor-based greedy vs sliding window; single or repeated pass) | Medium | Anchor-based greedy, repeated until no change |
 | M11 | **Number of runs / timing method** (mean? median? warm-up?) | High for time | 100 repetitions, report median ± IQR using `time.perf_counter` |
 | M12 | Whether reported time includes pruning | Low–Medium | Report search-only and total separately |
-| M13 | **Chen's method and Zhang's method**: references and parameters are not in the main text, and "Chen" is not cited in the introduction | High for Tables 2–4 | Implement only if the reference list gives an algorithm; otherwise mark as "not reproduced" |
+| M13 | **Chen et al. [29] and Zhang et al. [31]**: cited only by reference number in Tables 2–4; their algorithms and parameters are not described in the paper | High for Tables 2–4 | Read refs [29] and [31] and implement them only if they are fully specified; otherwise mark them "not reproduced" and compare against the published numbers only |
 | M14 | Bidirectional A\* termination rule | Low–Medium | Stop when frontiers meet; report the meeting-point path (as the paper seems to do) |
 | M15 | Coordinate convention ((x,y) vs (row,col); origin at top-left or bottom-left; 1-based indexing) | Low but error-prone | 1-based (x = column, y = row), origin at bottom-left as in Fig. 1 |
-| M16 | Raw values of Tables 1–5 (not in my copy of the paper) | Needed for the comparison table | Take them from the published PDF |
+| M16 | **How path length is measured.** Most published lengths are not valid 8-connected grid lengths (see §8.3) | High: exact lengths cannot be matched | Report the raw grid cost (1 / √2) and the Euclidean polyline length of the final path separately |
+| M17 | Whether the ablation rows are **isolated** (A\* + one change) or **cumulative** (see §8.4) | Medium | Run both isolated and cumulative ablations |
 
 ### 7.2 Unclear or inconsistent statements (good points for the critical analysis and viva)
 
@@ -167,8 +168,10 @@ These are listed in Q7. With documented assumptions, the **trends** should be re
 2. **"Tuning the coefficients"** (Abstract) suggests tunable parameters, but Eq. 6 has none. The weight is fully determined by geometry.
 3. **The hybrid heuristic is not admissible on 8-connected grids.** For a diagonal offset (Δx = Δy = k), $h=\tfrac{k\sqrt2+2k}{2}\approx1.707k$, while the true octile cost is $\sqrt2 k\approx1.414k$. That is a **20.7% overestimate**, and my numerical check confirms 1.207 is the maximum ratio. Combined with ω ≤ 1.313 (more for detour nodes), the effective inflation reaches about 1.59, so **the A\* search no longer guarantees an optimal grid path.** The paper's claim that the hybrid "maintains the optimal trend of Euclidean distance" is therefore not strictly correct. On 4-connected grids the hybrid is admissible, since (E + M)/2 ≤ M.
 4. **"Shorter than A\*" comes from post-processing, not the search.** Weighted search cannot beat optimal A\* on grid path length. The adaptive method is shorter only because pruning turns the grid path into an any-angle path. A fair test is to apply the same pruning to plain A\* ("A\* + pruning").
-5. **Ablation vs full method (30 × 30).** Pruning alone reportedly shortens the path by 1.67 m (40.41 → about 38.74 m) and cuts ≥ 45° turns from 9 to 5. The full method reaches only 39.72 m and 7 turns. So **the full combination is worse on length and smoothness than pruning alone**, which undercuts the "synergy" claim. A likely cause is that the adaptive weight produces a worse raw path for the pruning step to start from. Confirm this against Table 1.
-6. **Ambiguous percentages.** "The number of nodes dropped to 86.2%" could mean dropped *by* or *to*. The Dijkstra comparison says "an increase of 79.4% and 71.4%", but those numbers are (632−130)/632 and (0.14−0.04)/0.14. They are **reductions relative to Dijkstra**, not increases relative to A\*.
+5. **Pruning alone beats the full method on both maps (Tables 1–3).** On 30 × 30, pruning alone gives 38.74 m and 5 turns; the full adaptive A\* gives 39.72 m and 7. On 60 × 60, pruning alone gives 87.49 m and 7 turns; the full method gives 90.89 m and 8. **The full combination is worse on length and smoothness than pruning alone**, which undercuts the "synergy" claim. The likely cause is that the inflated heuristic yields a worse raw path for the pruning step to start from. The full method's real advantage is search effort (36 vs 130 nodes).
+6. **Some percentages in the text do not match the tables.** Full audit in §8.2:
+   - "Nodes dropped to 86.2%" (adaptive weight, 30 × 30), but the table shows 130 → 118, which is −9.2%.
+   - "Dijkstra … an increase of 79.4% and 71.4%" are actually (632−130)/632 and (0.14−0.04)/0.14: **reductions relative to Dijkstra**, not increases relative to A\*.
 7. **Timing resolution.** Times like 0.01–0.04 s at 2-decimal precision mean "75% faster" (0.04 → 0.01) could come from rounding alone. No repetitions or variance are reported.
 8. **Heuristic theory is misstated.** Sec. 3.1 says overestimation "enlarges the explored region". In standard theory, overestimation (weighted A\*) usually **shrinks** the explored region at the cost of optimality. The text also says ω "avoids local optima", but A\* is a complete best-first search and does not get stuck in local optima.
 9. **Wrong figure reference.** Step 2 of the pruning cites "Figure 3b", but this should be Figure 4b.
@@ -187,6 +190,69 @@ These are listed in Q7. With documented assumptions, the **trends** should be re
 
 ---
 
+## 8. Published results (Tables 1–5) and consistency audit
+
+All published values are also stored in machine-readable form in [`../data/published_results.csv`](../data/published_results.csv).
+
+### 8.1 Published results relative to the paper's own A\* baseline
+
+Changes are computed by me from the tables (negative = reduction). Time is in seconds, as reported to 0.01 s.
+
+| Map | Method | Time | Length (m) | Expanded nodes | Turns ≥ 45° |
+|---|---|---|---|---|---|
+| 30×30 | A\* (baseline) | 0.04 | 40.41 | 130 | 9 |
+| | Adaptive weight only | −25% | −0.21 | −9.2% | **+44.4%** (9→13) |
+| | Hybrid distance only | −50% | **+1.04** | −65.4% | 0% |
+| | Pruning only | −50% | −1.67 | 0% | −44.4% |
+| | **Adaptive A\* (full)** | **−75%** | −0.69 | **−72.3%** | −22.2% |
+| 60×60 | A\* (baseline) | 0.18 | 92.30 | 716 | 12 |
+| | Adaptive weight only | −50% | −0.25 | −42.5% | 0% |
+| | Hybrid distance only | −33.3% | −1.22 | −3.5% | −16.7% |
+| | Pruning only | −33.3% | −4.81 | −3.5% | −41.7% |
+| | **Adaptive A\* (full)** | **−66.7%** | −1.41 | **−62.6%** | −33.3% |
+| 100×100 | A\* (baseline) | 0.70 | 146.56 | 2191 | 34 |
+| | **Adaptive A\* (full)** | **−64.3%** | −5.89 | **−94.8%** | −58.8% |
+
+The abstract's averages **check out** against Tables 2–4:
+- time −68.65% (reported as 69%);
+- length −2.66 m;
+- turns ≥ 45° −38.1%.
+
+### 8.2 Text vs table cross-check
+
+| Claim in text | Table value | Verdict |
+|---|---|---|
+| T1, 30×30: adaptive weight "nodes dropped to 86.2%" | 130→118 = −9.2% | ✗ Mismatch |
+| T1, 30×30: hybrid distance nodes "fell by 65.4%" | 130→45 = −65.4% | ✓ |
+| T1, 30×30: pruning turns 9→5 (−44.4%), length −1.67 m | 9→5; 40.41→38.74 | ✓ |
+| T2: Dijkstra "increase of 79.4% / 71.4%" | (632−130)/632, (0.14−0.04)/0.14 | ✗ Mislabelled (reduction relative to Dijkstra) |
+| T5: time reduction "66.7% and 88.9%" | 0.03→0.01 = 66.7%; 0.25→0.04 = **84.0%** | ✗ Second value wrong |
+| T5: nodes reduction "86.8% and 86.3%" (swapped start/goal) | 202→43 = **78.7%**; 898→123 = 86.3% | ✗ First value wrong (86.8% is the *random-pair* row, 250→33) |
+| T5: length −0.38 m and −3.27 m; turns −7 and −12 | 40.30→39.92; 92.08→88.81; 13→6; 19→7 | ✓ |
+
+### 8.3 Path lengths are inconsistent with optimal search
+
+1. **Baseline A\* is not optimal under the paper's own metric.** Dijkstra is always optimal. The paper's A\* is longer than Dijkstra on every map (40.41 > 40.30; 92.30 > 92.10; 146.56 > 146.41). An A\* with an admissible heuristic would match Dijkstra exactly, so the "traditional A\*" baseline probably uses an inadmissible heuristic or a different graph.
+2. **The A\* path length changes when start and goal are swapped.** On 30×30, (2,2)→(28,28) gives 40.41 and (28,28)→(2,2) gives 40.30. On 60×60, the two directions give 92.30 and 92.08. On an undirected grid, the optimal length is the same in both directions. This confirms point 1.
+3. **Variants without pruning come out shorter than Dijkstra.** Adaptive-weight only gives 40.20 < 40.30 (30×30) and 92.05 < 92.10 (60×60); hybrid-distance only gives 91.08 < 92.10 (60×60). Chen et al. (92.08) and Zhang et al. (40.29) also beat Dijkstra. A weighted (sub-optimal) search on the same graph cannot be shorter than the optimum. So either the methods are not run on the same graph or cost model, or the "length" includes some smoothing.
+4. **The lengths do not decompose into grid steps.** I checked whether each length can be written as *a·1 + b·√2* with *a* straight moves and *b* diagonal moves that can actually reach the goal (at least Chebyshev/Manhattan displacement, correct parity, ±0.01 rounding). Most values, including A\* 40.41, Dijkstra 40.30 and A\* 92.30, **cannot**. I also tried diagonal costs of 1.4, 1.41, 1.414 and 1.5, and none fit. The paper's length metric is therefore not plain 8-connected step cost. Its exact definition is unknown (missing item M16).
+
+**Consequence for reproduction:** I cannot expect to match published lengths exactly. The defensible comparison is **relative change against my own A\* baseline**, with all methods on the same map and graph, and lengths measured the same way.
+
+### 8.4 The ablation protocol is ambiguous
+
+- **30×30 pruning row:** 130 nodes, the same as A\*. This looks like *A\* + pruning* (isolated).
+- **60×60 pruning row:** 691 nodes and 0.12 s, identical to the *hybrid-distance* row. This looks *cumulative* (hybrid + pruning).
+- **Pruning-only rows are faster than A\*** (0.02 vs 0.04 s; 0.12 vs 0.18 s), even though pruning is A\* plus extra work. This can only be true if the search changed (cumulative rows) or the timing is noise.
+- **The adaptive weight alone is not clearly beneficial on 30×30.** Nodes fall only 9%, while turns rise from 9 to 13. Most of the full method's node reduction comes from **combining** ω (≤ 1.31) with the inflated hybrid heuristic (≤ 1.21×). Together they reach up to about 1.59× inflation, which behaves like greedy best-first search. This explains 113 expanded nodes for a 97-step diagonal route on 100×100.
+
+### 8.5 Useful calibration from the published numbers
+
+- **Dijkstra's expanded counts estimate the free reachable cells.** Dijkstra expands 632 / 1740 / 7520 nodes. Since the goals sit near the far corner, Dijkstra explores almost every reachable free cell. That implies roughly **30% / 52% / 25% obstacle cells** for map1 / map2 / map3, which is a check for the digitised maps.
+- **The A\* baseline expanded counts** (130 / 716 / 2191) are a second check.
+
+---
+
 ## Implications for the re-implementation plan (Parts 4–6)
 
 1. Implement baseline A\* and the three improvements as **independent switches**, so the ablation (Table 1) can be reproduced: `--weight {none,adaptive}`, `--heuristic {euclid,manhattan,octile,hybrid}`, `--prune {off,on}`.
@@ -194,4 +260,7 @@ These are listed in Q7. With documented assumptions, the **trends** should be re
 3. Digitise map1–3 from Fig. 5, store them as `.csv`/`.npy`, and record the validation error against the published A\* length.
 4. Time with 100 repetitions and report median ± IQR. Report node counts, which are deterministic and do not depend on hardware, as the main efficiency metric.
 5. Run robustness tests on N = 50 random maps per size (fixed seeds) and use a paired Wilcoxon test to compare adaptive A\* with A\*.
-6. Record every assumption M1–M16 in the README and in the IEEE report's "Deviations" subsection.
+6. Record every assumption M1–M17 in the README and in the IEEE report's "Deviations" subsection.
+7. Calibrate the digitised maps against §8.5: Dijkstra expansions ≈ 632 / 1740 / 7520 and A\* expansions ≈ 130 / 716 / 2191.
+8. Run the ablation both **isolated** (A\* + one change) and **cumulative** (adding changes one at a time), because the paper's protocol is unclear (§8.4).
+9. In Part 5, compare primarily on **relative change against my own A\* baseline**. Absolute values cannot match because of the hardware, language, map and length-metric differences.
