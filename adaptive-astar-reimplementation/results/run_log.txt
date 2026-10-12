@@ -1,0 +1,92 @@
+GridMap(name='map1', size=30x30, obstacles=32.0%, connectivity=8)
+GridMap(name='map2', size=60x60, obstacles=47.5%, connectivity=8)
+GridMap(name='map3', size=100x100, obstacles=22.2%, connectivity=8)
+T1 30x30 (2, 2)->(28, 28) A*                             t=    0.93ms L=  39.70 N=  130 C=8
+T1 30x30 (2, 2)->(28, 28) Adaptive estimation function   t=    0.73ms L=  39.70 N=  123 C=7
+T1 30x30 (2, 2)->(28, 28) Distance model optimization    t=    0.24ms L=  39.70 N=   34 C=6
+T1 30x30 (2, 2)->(28, 28) Redundant point deletion       t=    0.75ms L=  38.92 N=  130 C=1
+T1 30x30 (2, 2)->(28, 28) AEF+DMO (no pruning)           t=    0.40ms L=  39.70 N=   57 C=6
+T1 30x30 (2, 2)->(28, 28) Adaptive A*                    t=    0.54ms L=  38.92 N=   57 C=1
+T1 30x30 (2, 2)->(28, 28) Redundant point deletion (single-pass) t=    0.62ms L=  39.16 N=  130 C=2
+T1 30x30 (2, 2)->(28, 28) Adaptive A* (single-pass pruning) t=    0.41ms L=  39.16 N=   57 C=2
+T1 60x60 (2, 2)->(58, 58) A*                             t=    3.56ms L=  95.01 N=  759 C=28
+T1 60x60 (2, 2)->(58, 58) Adaptive estimation function   t=    2.73ms L=  95.01 N=  489 C=28
+T1 60x60 (2, 2)->(58, 58) Distance model optimization    t=    1.63ms L=  95.01 N=  321 C=23
+T1 60x60 (2, 2)->(58, 58) Redundant point deletion       t=    3.84ms L=  91.52 N=  759 C=8
+T1 60x60 (2, 2)->(58, 58) AEF+DMO (no pruning)           t=    1.81ms L=  95.01 N=  280 C=23
+T1 60x60 (2, 2)->(58, 58) Adaptive A*                    t=    2.27ms L=  92.31 N=  280 C=7
+T1 60x60 (2, 2)->(58, 58) Redundant point deletion (single-pass) t=    3.62ms L=  92.70 N=  759 C=7
+T1 60x60 (2, 2)->(58, 58) Adaptive A* (single-pass pruning) t=    1.65ms L=  93.05 N=  280 C=6
+T2 30x30 (2, 2)->(28, 28) A*                             t=    0.62ms L=  39.70 N=  130 C=8
+T2 30x30 (2, 2)->(28, 28) Dijkstra                       t=    2.09ms L=  39.70 N=  570 C=5
+T2 30x30 (2, 2)->(28, 28) Bidirectional A*               t=    0.70ms L=  39.70 N=  137 C=5
+T2 30x30 (2, 2)->(28, 28) Adaptive A*                    t=    0.53ms L=  38.92 N=   57 C=1
+T2 30x30 (2, 2)->(28, 28) Redundant point deletion       t=    0.76ms L=  38.92 N=  130 C=1
+T2 30x30 (2, 2)->(28, 28) A*+Octile+RPD                  t=    0.62ms L=  38.22 N=   89 C=0
+T2 30x30 (2, 2)->(28, 28) Adaptive A* (single-pass pruning) t=    0.50ms L=  39.16 N=   57 C=2
+T3 60x60 (2, 2)->(58, 58) A*                             t=    4.05ms L=  95.01 N=  759 C=28
+T3 60x60 (2, 2)->(58, 58) Dijkstra                       t=    6.97ms L=  95.01 N= 1845 C=24
+T3 60x60 (2, 2)->(58, 58) Bidirectional A*               t=    4.49ms L=  95.01 N=  853 C=24
+T3 60x60 (2, 2)->(58, 58) Adaptive A*                    t=    1.71ms L=  92.31 N=  280 C=7
+T3 60x60 (2, 2)->(58, 58) Redundant point deletion       t=    4.25ms L=  91.52 N=  759 C=8
+T3 60x60 (2, 2)->(58, 58) A*+Octile+RPD                  t=    3.28ms L=  92.31 N=  628 C=7
+T3 60x60 (2, 2)->(58, 58) Adaptive A* (single-pass pruning) t=    1.64ms L=  93.05 N=  280 C=6
+T4 100x100 (2, 2)->(99, 99) A*                             t=   12.51ms L= 145.97 N= 2476 C=32
+T4 100x100 (2, 2)->(99, 99) Dijkstra                       t=   31.47ms L= 145.97 N= 7777 C=22
+T4 100x100 (2, 2)->(99, 99) Bidirectional A*               t=    6.89ms L= 145.97 N= 1292 C=24
+T4 100x100 (2, 2)->(99, 99) Adaptive A*                    t=    4.79ms L= 141.29 N=  737 C=3
+T4 100x100 (2, 2)->(99, 99) Redundant point deletion       t=   13.93ms L= 141.29 N= 2476 C=3
+T4 100x100 (2, 2)->(99, 99) A*+Octile+RPD                  t=    9.00ms L= 141.26 N= 1512 C=3
+T4 100x100 (2, 2)->(99, 99) Adaptive A* (single-pass pruning) t=    4.37ms L= 143.83 N=  737 C=6
+T5 30x30 (28, 28)->(2, 2) A*                             t=    1.51ms L=  39.70 N=  199 C=6
+T5 30x30 (28, 28)->(2, 2) Adaptive A*                    t=    0.63ms L=  38.45 N=   66 C=1
+T5 30x30 (28, 28)->(2, 2) Adaptive A* (single-pass pruning) t=    0.46ms L=  39.52 N=   66 C=3
+T5 30x30 (4, 24)->(29, 2) A*                             t=    1.09ms L=  37.63 N=  239 C=17
+T5 30x30 (4, 24)->(29, 2) Adaptive A*                    t=    0.47ms L=  35.84 N=   60 C=4
+T5 30x30 (4, 24)->(29, 2) Adaptive A* (single-pass pruning) t=    0.39ms L=  36.91 N=   60 C=6
+T5 60x60 (58, 58)->(2, 2) A*                             t=    4.84ms L=  95.01 N=  977 C=25
+T5 60x60 (58, 58)->(2, 2) Adaptive A*                    t=    3.29ms L=  92.53 N=  505 C=7
+T5 60x60 (58, 58)->(2, 2) Adaptive A* (single-pass pruning) t=    2.95ms L=  93.52 N=  505 C=7
+T5 60x60 (4, 54)->(59, 2) A*                             t=    4.35ms L= 115.38 N=  937 C=20
+T5 60x60 (4, 54)->(59, 2) Adaptive A*                    t=    4.36ms L= 112.58 N=  668 C=10
+T5 60x60 (4, 54)->(59, 2) Adaptive A* (single-pass pruning) t=    3.71ms L= 115.32 N=  668 C=11
+## Headline (abstract) metrics - mean over the three maps
+
+| Evaluation metric | Published result | Our result | Difference |
+|---|---|---|---|
+| Planning-time reduction vs A* | 68.7% | 44.9% | -23.8 pp |
+| Path-length reduction vs A* | 2.66 m | 2.72 m | +0.05 m |
+| Expanded-node reduction vs A* | 76.6% | 63.2% | -13.4 pp |
+| Reduction of corners >= 45 deg vs A* | 38.1% | 84.4% | +46.2 pp |
+
+# Robustness on random maps
+
+Each scene type: 50 fresh random maps (calibrated generator, unseen seeds), paper start/goal. Change vs A* (length in metres, others in percent); W/T/L = maps where the method is lower / equal / higher than A*; p = two-sided Wilcoxon signed-rank test.
+
+| Map | Method | Metric | Mean +- std | Median | W/T/L | p |
+|---|---|---|---|---|---|---|
+| map1 | Adaptive A* | time_s | -21.77% +- 21.14 | -24.71% | 42/0/8 | 3.6e-08 |
+| map1 | Adaptive A* | length_m | -1.58 m +- 1.12 | -1.82 m | 48/0/2 | 9.8e-10 |
+| map1 | Adaptive A* | expanded_nodes | -47.79% +- 16.02 | -51.26% | 50/0/0 | 7.5e-10 |
+| map1 | Adaptive A* | corners_ge45 | -77.98% +- 12.66 | -78.76% | 50/0/0 | 7.3e-10 |
+| map1 | Redundant point deletion | time_s | +13.09% +- 9.74 | +11.68% | 1/0/49 | 1.8e-14 |
+| map1 | Redundant point deletion | length_m | -1.86 m +- 0.57 | -2.01 m | 50/0/0 | 1.8e-15 |
+| map1 | Redundant point deletion | expanded_nodes | +0.00% +- 0.00 | +0.00% | 0/50/0 | 1 |
+| map1 | Redundant point deletion | corners_ge45 | -79.18% +- 13.00 | -80.91% | 50/0/0 | 7.3e-10 |
+| map2 | Adaptive A* | time_s | -13.77% +- 31.10 | -21.51% | 32/0/18 | 0.0088 |
+| map2 | Adaptive A* | length_m | -1.97 m +- 3.24 | -2.88 m | 41/0/9 | 4.7e-05 |
+| map2 | Adaptive A* | expanded_nodes | -35.51% +- 21.78 | -34.74% | 49/0/1 | 7.6e-14 |
+| map2 | Adaptive A* | corners_ge45 | -65.49% +- 8.80 | -64.29% | 50/0/0 | 7.2e-10 |
+| map2 | Redundant point deletion | time_s | +8.22% +- 12.78 | +8.03% | 7/0/43 | 3.4e-06 |
+| map2 | Redundant point deletion | length_m | -4.06 m +- 0.89 | -4.01 m | 50/0/0 | 1.8e-15 |
+| map2 | Redundant point deletion | expanded_nodes | +0.00% +- 0.00 | +0.00% | 0/50/0 | 1 |
+| map2 | Redundant point deletion | corners_ge45 | -67.32% +- 8.30 | -67.12% | 50/0/0 | 7.3e-10 |
+| map3 | Adaptive A* | time_s | -65.65% +- 10.61 | -68.65% | 50/0/0 | 1.8e-15 |
+| map3 | Adaptive A* | length_m | -2.84 m +- 2.36 | -3.85 m | 45/0/5 | 7.2e-10 |
+| map3 | Adaptive A* | expanded_nodes | -73.99% +- 6.63 | -75.21% | 50/0/0 | 1.8e-15 |
+| map3 | Adaptive A* | corners_ge45 | -76.68% +- 7.12 | -76.94% | 50/0/0 | 7.3e-10 |
+| map3 | Redundant point deletion | time_s | +3.70% +- 10.16 | +4.99% | 12/0/38 | 0.00016 |
+| map3 | Redundant point deletion | length_m | -5.79 m +- 0.99 | -6.01 m | 50/0/0 | 1.8e-15 |
+| map3 | Redundant point deletion | expanded_nodes | +0.00% +- 0.00 | +0.00% | 0/50/0 | 1 |
+| map3 | Redundant point deletion | corners_ge45 | -82.01% +- 6.50 | -82.02% | 50/0/0 | 7.3e-10 |
+

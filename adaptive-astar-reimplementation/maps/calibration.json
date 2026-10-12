@@ -1,0 +1,133 @@
+{
+  "map1": {
+    "scene": "irregular",
+    "trials": 12000,
+    "valid_trials": 12000,
+    "best_trial": 1289,
+    "seed": 1796752687,
+    "params": {
+      "n_blobs": 17,
+      "blob_cells": [
+        4,
+        35
+      ]
+    },
+    "error": 0.2238,
+    "obstacle_ratio": 0.32,
+    "achieved_vs_target": {
+      "dijkstra_nodes@(2, 2)->(28, 28)": {
+        "proxy": 570,
+        "paper": 632
+      },
+      "dijkstra_length@(2, 2)->(28, 28)": {
+        "proxy": 39.7,
+        "paper": 40.3
+      },
+      "astar_nodes@(2, 2)->(28, 28)": {
+        "proxy": 130,
+        "paper": 130
+      },
+      "astar_corners@(2, 2)->(28, 28)": {
+        "proxy": 8,
+        "paper": 9
+      },
+      "astar_nodes@(28, 28)->(2, 2)": {
+        "proxy": 199,
+        "paper": 202
+      },
+      "astar_nodes@(4, 24)->(29, 2)": {
+        "proxy": 239,
+        "paper": 250
+      },
+      "astar_length@(4, 24)->(29, 2)": {
+        "proxy": 37.63,
+        "paper": 38.21
+      }
+    }
+  },
+  "map2": {
+    "scene": "maze",
+    "trials": 6000,
+    "valid_trials": 6000,
+    "best_trial": 4125,
+    "seed": 2048598178,
+    "params": {
+      "corridor": 4,
+      "wall": 3,
+      "loop_prob": 0.204
+    },
+    "error": 0.6201,
+    "obstacle_ratio": 0.4753,
+    "achieved_vs_target": {
+      "dijkstra_nodes@(2, 2)->(58, 58)": {
+        "proxy": 1845,
+        "paper": 1740
+      },
+      "dijkstra_length@(2, 2)->(58, 58)": {
+        "proxy": 95.01,
+        "paper": 92.1
+      },
+      "astar_nodes@(2, 2)->(58, 58)": {
+        "proxy": 759,
+        "paper": 716
+      },
+      "astar_corners@(2, 2)->(58, 58)": {
+        "proxy": 28,
+        "paper": 12
+      },
+      "astar_nodes@(58, 58)->(2, 2)": {
+        "proxy": 977,
+        "paper": 898
+      },
+      "astar_nodes@(4, 54)->(59, 2)": {
+        "proxy": 937,
+        "paper": 1159
+      },
+      "astar_length@(4, 54)->(59, 2)": {
+        "proxy": 115.38,
+        "paper": 118.49
+      }
+    }
+  },
+  "map3": {
+    "scene": "array",
+    "trials": 2400,
+    "valid_trials": 2400,
+    "best_trial": 798,
+    "seed": 694909934,
+    "params": {
+      "panel_h": 2,
+      "aisle": 2,
+      "panel_len": [
+        5,
+        7
+      ],
+      "gap": [
+        2,
+        4
+      ],
+      "missing_prob": 0.296,
+      "clutter": 6
+    },
+    "error": 0.1795,
+    "obstacle_ratio": 0.2218,
+    "achieved_vs_target": {
+      "dijkstra_nodes@(2, 2)->(99, 99)": {
+        "proxy": 7777,
+        "paper": 7520
+      },
+      "dijkstra_length@(2, 2)->(99, 99)": {
+        "proxy": 145.97,
+        "paper": 146.41
+      },
+      "astar_nodes@(2, 2)->(99, 99)": {
+        "proxy": 2476,
+        "paper": 2191
+      },
+      "astar_corners@(2, 2)->(99, 99)": {
+        "proxy": 32,
+        "paper": 34
+      }
+    }
+  }
+}
