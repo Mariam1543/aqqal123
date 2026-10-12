@@ -43,6 +43,12 @@ def published_csv() -> str:
     return (ROOT / "data" / "published_results.csv").read_text().strip()
 
 
+def calibration_code() -> str:
+    """The map-calibration search of scripts/calibrate_maps.py (targets, sampling, scoring)."""
+    text = (ROOT / "scripts" / "calibrate_maps.py").read_text()
+    return text[text.index("# (start, goal, quantity, published target, weight)"):text.index("def main()")].strip() + "\n"
+
+
 def calibration() -> dict:
     calib = json.loads((ROOT / "maps" / "calibration.json").read_text())
     return {m: {"seed": calib[m]["seed"], "params": calib[m]["params"]} for m in ("map1", "map2", "map3")}
@@ -52,25 +58,82 @@ def build() -> dict:
     calib = calibration()
     cells = [
         md("""
-# Adaptive A\\* for Mobile-Robot Global Path Planning — Step-by-Step Re-Implementation
+# Adaptive A\\* for Mobile-Robot Global Path Planning — Independent Re-Implementation and Reproduction Study
 
-**Paper reproduced:** H. Cao, Z. Guo, Y. Zhang, Z. Lu, and L. Jiang, "An Adaptive A\\* Algorithm for Mobile Robots Global Path Planning," *Electronics*, vol. 15, no. 13, Art. 2807, 2026, doi: 10.3390/electronics15132807.
-
-The paper has no public source code, so this notebook re-implements its method from scratch and reproduces its experiments. It runs top to bottom with **Run All**, on CPU only, with no Internet and no uploaded files.
-
-| Part | What it does |
+| | |
 |---|---|
-| 1 | Setup |
-| 2 | Implementation: grid model, heuristics + **adaptive weight (Eq. 6)**, **hybrid distance (Eq. 7)**, A\\* / Dijkstra / bidirectional A\\*, **redundant point deletion (Sec. 3.3)**, metrics, planners |
-| 3 | Sanity checks (correctness tests) |
-| 4 | Maps: proxy maps calibrated to the paper's statistics |
-| 5 | The paper's published results (Tables 1–5) |
-| 6 | Experiments: Table 1 ablation, Tables 2–4 algorithm comparison, Table 5 start/goal points |
-| 7 | Headline comparison: published vs. reproduced (Metrics 1–4) |
-| 8 | Paired timing study |
-| 9 | Robustness on 150 random maps (Wilcoxon tests) |
-| 10 | Sensitivity to the ambiguous pruning rule |
-| 11 | Summary |
+| **Student** | *Your name* — *Roll number* |
+| **Course** | *Course name* — Assignment 1: Research Paper Re-Implementation |
+| **Paper** | H. Cao, Z. Guo, Y. Zhang, Z. Lu, and L. Jiang, "An Adaptive A\\* Algorithm for Mobile Robots Global Path Planning," *Electronics*, vol. 15, no. 13, Art. 2807, 2026, doi: 10.3390/electronics15132807 |
+| **Source code of the paper** | Not publicly available; everything below was written independently from the paper |
+
+The notebook runs top to bottom with **Run All**: CPU only, no Internet, no uploaded files.
+"""),
+        md("""
+## What is our own work in this notebook?
+
+The paper gives only equations, a short description and result tables. **Everything below was produced by us:**
+
+| # | Our contribution | Where |
+|---|---|---|
+| 1 | Read and analysed the paper: problem, method, data, feasibility and what is missing (assignment Q1–Q7) | Part 0 |
+| 2 | **Wrote the whole implementation from scratch:** grid model, A\\* (Algorithm 1), adaptive weight (Eq. 6), hybrid heuristic (Eq. 7), redundant point deletion (Sec. 3.3), Dijkstra, bidirectional A\\*, an exact line-of-sight test, the metrics | Part 2 |
+| 3 | Made and documented every decision the paper leaves open (17 missing details → explicit assumptions) | Parts 0 and 2 |
+| 4 | Wrote correctness tests | Part 3 |
+| 5 | **Rebuilt the paper's maps.** They are published only as pictures, so we designed map generators and a calibration search over 20,400 candidate maps that matches the paper's own Dijkstra / A\\* statistics | Part 4 |
+| 6 | **Audited the paper's published numbers** and found internal contradictions (e.g. its "A\\*" is longer than its Dijkstra; several percentages in the text do not match its tables) | Part 5 |
+| 7 | Reproduced every experiment of Tables 1–5 and compared each row with the paper | Parts 6 and 8 |
+| 8 | **Added experiments the paper does not have:** A\\* + pruning and octile baselines, a paired timing study, 150 random maps with Wilcoxon tests, an optimality check, and a sensitivity test of an ambiguous rule | Parts 7, 9 and 10 |
+| 9 | Critical analysis: comparable / improved / lower, with technical justification | Part 11 |
+
+### Why does it run in a few minutes?
+This is a **classical graph-search algorithm**, not deep learning: there is no training. One A\\* search on a 30×30 to 100×100 grid takes about 0.5–15 ms in Python. The paper itself reports 0.01–1.93 s per search in MATLAB.
+
+A full run of this notebook executes roughly **6,000 searches**:
+- about 1,400 for Tables 1–5 (30 timing repeats each);
+- 1,800 for the paired timing study;
+- 2,700 for the 150-map robustness study.
+
+The slowest step, searching 20,400 candidate maps to rebuild the paper's maps, was done beforehand. It can be re-run in Part 4 by setting `RUN_MAP_CALIBRATION = True` (about 5–10 extra minutes).
+"""),
+        md("""
+## 0. Paper analysis and feasibility (assignment Section 3)
+
+**Q1. Problem, objectives, contributions.**
+
+*Problem.* Conventional A\\* for global path planning on a grid is slow (many expanded nodes), adapts poorly to different maps (one fixed distance metric), and produces jagged paths with many sharp turns.
+
+*Objective.* Shorter planning time, shorter and smoother paths.
+
+*Contributions claimed by the paper:*
+1. An **adaptive estimation function** f = g + ω(n)·h with ω = ln(1 + e^(d/D)).
+2. A **hybrid distance model** h = (Euclidean + Manhattan)/2.
+3. A **redundant point deletion** step based on collinearity and obstacle checks.
+
+The paper reports, versus A\\*: 69% less time, 2.66 m shorter paths, and 38.1% fewer turns ≥ 45°.
+
+**Q2. Methodology.** A grid map with 1 m cells. A\\* search with the weighted hybrid heuristic produces a raw grid path, and redundant point deletion turns it into the final path. The evaluation uses four metrics: time, length, expanded nodes, and corners ≥ 45°.
+
+**Q3. Dataset.** There is no dataset, only three hand-made grid maps (30×30, 60×60, 100×100) with given start/goal points. **They are not publicly available**; they appear only as figures.
+
+**Q4. Tools and resources.**
+- *Paper:* MATLAB R2023b on an Intel i5 laptop with 16 GB RAM.
+- *Ours:* Python with NumPy, pandas, SciPy and Matplotlib, on CPU only. No GPU is needed.
+
+**Q5. Feasibility.** Highly feasible: the method is deterministic and cheap, with no training. The main obstacles are the missing maps and the two baselines (Chen et al., Zhang et al.), which the paper does not describe.
+
+**Q6. Enough detail?** Partly. The equations are clear, so the method and its trends can be reproduced. The exact numbers cannot, because the maps, several definitions and the test protocol are missing.
+
+**Q7. Missing, unclear or hard to reproduce** (each becomes an assumption in Part 2):
+- *Maps and motion model:* the obstacle maps; 4- vs 8-connected moves; whether diagonal moves may cut corners.
+- *Definitions:* which distance d and D use; what "traversed nodes" means; the corner definition; how path length is measured.
+- *Algorithm details:* the tie-breaking rule; the line-of-sight test and pruning order used for deletion.
+- *Protocol:* the number of timing runs.
+- *Baselines:* the Chen / Zhang methods; whether the ablation rows are isolated or cumulative.
+
+**We also found:**
+- The hybrid heuristic **overestimates** the true 8-connected cost by up to 20.7%, so it is not admissible and optimality is lost. This is computed in Part 2.2.
+- The paper's own numbers contain contradictions. These are audited in Part 5.
 """),
         md("## 1. Setup"),
         code("""
@@ -79,10 +142,11 @@ QUICK = False
 TIMING_REPEATS = 3 if QUICK else 30     # timing repetitions per configuration (median reported)
 TIMING_PAIRS = 30 if QUICK else 300     # interleaved A* / Adaptive A* pairs in the timing study
 ROBUST_MAPS = 5 if QUICK else 50        # random maps per scene type in the robustness study
+RUN_MAP_CALIBRATION = False             # True = re-run the 20,400-candidate map search (5-10 extra minutes)
 """),
         code("""
 %matplotlib inline
-import gc, heapq, io, itertools, math, platform, statistics, time
+import gc, heapq, io, itertools, math, os, platform, statistics, time
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -104,7 +168,22 @@ print(f"Python {platform.python_version()} | numpy {np.__version__} | pandas {pd
 print("CPU:", platform.processor() or platform.machine(), "| cores:", __import__("os").cpu_count())
 """),
         md("""
-## 2. Implementation
+## 2. Implementation (written by us from the paper)
+
+**Our implementation decisions.** These are needed wherever the paper is silent; each is applied to *every* planner alike.
+
+| ID | Topic | Paper | Our choice |
+|---|---|---|---|
+| D1 | Maps | Figures only | Proxy maps calibrated to the paper's statistics (Part 4) |
+| D2 | Motion | Not stated | 8-connected, cost 1 / √2, no diagonal corner cutting |
+| D3 | Baseline heuristic | "Traditional" | Euclidean (admissible, so our A\\* baseline is optimal) |
+| D4 | d, D in Eq. 6 | Not stated | Euclidean distances |
+| D5 | Ties in OPEN | Not stated | Lower f, then lower h, then first-in-first-out (deterministic) |
+| D6 | Line of sight | Not stated | Exact: every cell the segment touches must be free |
+| D7 | Pruning order | Ambiguous | Anchor-based three-node window (alternative tested in Part 10) |
+| D8 | Path length | Not stated | Euclidean length of the final polyline |
+| D9 | Timing | One value at 0.01 s resolution | Median of 30 runs, plus a paired study (Part 7) |
+| D10 | Chen / Zhang baselines | Not described | Compared on their published numbers only |
 
 ### 2.1 Environment model (paper Sec. 2.1)
 The workspace is a grid of 1 m × 1 m cells; black cells are obstacles. The robot moves in **8 directions** (straight cost 1, diagonal cost √2).
@@ -180,7 +259,7 @@ check("adaptive weight = ln(1+e) at start and ln 2 at goal",
       and abs(adaptive_weight((0, 0), (10, 0))((10, 0)) - math.log(2)) < 1e-12)
 """),
         md("""
-## 4. Maps
+## 4. Maps (our reconstruction)
 
 The paper shows its three maps **only as figures** (30×30 irregular outdoor, 60×60 maze/corridor, 100×100 array-like). No map data is published.
 
@@ -204,6 +283,33 @@ def build_proxy_map(map_id):
 MAPS = {{"30x30": build_proxy_map("map1"), "60x60": build_proxy_map("map2"), "100x100": build_proxy_map("map3")}}
 for size, grid in MAPS.items():
     print(size, grid)
+"""),
+        md("""
+### 4.1 How the maps were obtained: our calibration search
+For each map we sampled generator parameters and seeds, and kept the candidate whose **baseline** statistics are closest to the paper. The statistics used are Dijkstra and A\\* expanded nodes, optimal length, and A\\* corners, for every published start/goal pair. The score is a weighted sum of absolute log-ratios.
+
+The proposed method is **never** used here, so the maps are not tuned in its favour. Setting `RUN_MAP_CALIBRATION = True` re-runs the full search (12,000 + 6,000 + 2,400 candidates) and confirms that it selects exactly the seeds stored above.
+"""),
+        code(calibration_code()),
+        code("""
+if RUN_MAP_CALIBRATION:
+    import multiprocessing as mp
+    t0 = time.time()
+    with mp.get_context("fork").Pool(os.cpu_count()) as pool:
+        for map_id in ("map1", "map2", "map3"):
+            n_trials = BUDGET[map_id] * 4
+            results = [r for r in pool.imap_unordered(evaluate, [(map_id, i) for i in range(n_trials)], chunksize=8)
+                       if r is not None]
+            err, trial, seed, params, measured = min(results, key=lambda r: r[0])
+            print(f"{map_id}: {n_trials} candidates, best error {err:.3f}, seed {seed} -> "
+                  f"{'MATCHES' if seed == CALIBRATION[map_id]['seed'] else 'DIFFERS FROM'} the stored map")
+    print(f"calibration time: {time.time() - t0:.0f} s")
+else:
+    print("Map calibration skipped (set RUN_MAP_CALIBRATION = True to re-run it). Calibration score of the stored maps:")
+    for map_id in ("map1", "map2", "map3"):
+        params = {k: tuple(v) if isinstance(v, list) else v for k, v in CALIBRATION[map_id]["params"].items()}
+        grid = make_map(map_id, CALIBRATION[map_id]["seed"], **params)
+        print(f"  {map_id}: error = {score(measure(grid, TARGETS[map_id]), TARGETS[map_id]):.3f}")
 """),
         code("""
 # How close are the proxy maps to the paper? (baseline statistics only)
@@ -262,6 +368,58 @@ PUBLISHED["algorithm"] = PUBLISHED["algorithm"].replace({{"Dijkstra [28]": "Dijk
                                                           "Bidirectional A* [30]": "Bidirectional A*"}})
 display(PUBLISHED)
 '''),
+        md("""
+### 5.1 Our audit of the paper's published numbers
+Before comparing against the paper, we checked whether its own numbers are internally consistent.
+"""),
+        code("""
+# (a) Abstract claims recomputed from Tables 2-4
+t = PUBLISHED[PUBLISHED["table"].isin(["T2", "T3", "T4"])].set_index(["map", "algorithm"])
+maps = ["30x30", "60x60", "100x100"]
+time_red = np.mean([100 * (t.loc[(m, "A*"), "time_s"] - t.loc[(m, "Adaptive A*"), "time_s"]) / t.loc[(m, "A*"), "time_s"] for m in maps])
+len_red = np.mean([t.loc[(m, "A*"), "length_m"] - t.loc[(m, "Adaptive A*"), "length_m"] for m in maps])
+cor_red = np.mean([100 * (t.loc[(m, "A*"), "corners_ge45"] - t.loc[(m, "Adaptive A*"), "corners_ge45"]) / t.loc[(m, "A*"), "corners_ge45"] for m in maps])
+print(f"Abstract: 69% time, 2.66 m, 38.1% corners  ->  recomputed: {time_red:.2f}%, {len_red:.2f} m, {cor_red:.1f}%  (consistent)")
+
+# (b) Claims in the text vs the paper's own tables
+def pct(a, b):
+    return 100 * (a - b) / a
+claims = pd.DataFrame([
+    ("T1 30x30: adaptive weight 'nodes dropped to 86.2%'", "86.2%", f"{pct(130, 118):.1f}% drop (130 -> 118)"),
+    ("T2: Dijkstra 'increase of 79.4%' nodes vs A*", "+79.4%", f"+{100 * (632 - 130) / 130:.0f}% (79.4% is the reduction relative to Dijkstra)"),
+    ("T5 60x60 swapped: time reduction '88.9%'", "88.9%", f"{pct(0.25, 0.04):.1f}% (0.25 -> 0.04 s)"),
+    ("T5 30x30 swapped: node reduction '86.8%'", "86.8%", f"{pct(202, 43):.1f}% (202 -> 43); 86.8% is the random-pair row"),
+], columns=["Statement in the paper", "Stated", "Computed from the paper's own table"])
+display(claims)
+
+# (c) Optimality check: an admissible A* must give the same length as Dijkstra, in both directions
+rows = []
+for m in maps:
+    rows.append({"map": m, "paper A* length": t.loc[(m, "A*"), "length_m"],
+                 "paper Dijkstra length": t.loc[(m, "Dijkstra"), "length_m"],
+                 "A* longer than Dijkstra?": t.loc[(m, "A*"), "length_m"] > t.loc[(m, "Dijkstra"), "length_m"]})
+display(pd.DataFrame(rows).set_index("map"))
+t5 = PUBLISHED[(PUBLISHED["table"] == "T5") & (PUBLISHED["algorithm"] == "A*")]
+print("A* length when start and goal are swapped (should be identical to the forward run):")
+print(f"  30x30: forward 40.41 vs swapped {t5.iloc[0]['length_m']:.2f};  60x60: forward 92.30 vs swapped {t5.iloc[2]['length_m']:.2f}")
+
+# (d) Can the published lengths be built from 8-connected grid steps (1 and sqrt 2)?
+def is_grid_length(L, dx, dy, tol=0.01):
+    for b in range(0, 400):
+        a = L - b * math.sqrt(2)
+        if a < -tol:
+            return False
+        A = round(a)
+        if abs(a - A) <= tol and A + 2 * b >= dx + dy and A + b >= max(dx, dy) and (A - dx - dy) % 2 == 0:
+            return True
+    return False
+checks = [(m, alg, t.loc[(m, alg), "length_m"], d) for m, d in (("30x30", 26), ("60x60", 56), ("100x100", 97))
+          for alg in ("A*", "Dijkstra")]
+display(pd.DataFrame([{"map": m, "algorithm": a, "published length": L, "valid 8-connected grid length?": is_grid_length(L, d, d)}
+                      for m, a, L, d in checks]))
+print("Conclusion: the paper's baseline A* is not optimal under its own length metric, and its length metric is "
+      "not plain grid-step cost -> exact lengths cannot be matched; we compare changes relative to A*.")
+"""),
         md("""
 ## 6. Experiments
 
@@ -571,20 +729,38 @@ for size, goal in (("30x30", (28, 28)), ("60x60", (58, 58)), ("100x100", (99, 99
 display(pd.DataFrame(rows).set_index("map"))
 """),
         md("""
-## 11. Summary
+## 11. Critical analysis (assignment Section 6)
 
-| Metric | Verdict |
-|---|---|
-| Path length | **Comparable** to the paper |
-| Expanded nodes | **Same trend**, smaller on 30×30 and 100×100 |
-| Planning time | **Lower** reduction than published; Python per-node overhead dominates on small maps |
-| Corners | Larger reduction, caused by the pruning interpretation (Section 10), **not** a better method |
+| Metric | Verdict | Justification |
+|---|---|---|
+| Path length | **(A) Comparable** | Mean reduction ≈ 2.72 m vs 2.66 m published. The sign is the same in every experiment and on most random maps |
+| Expanded nodes | **(A)/(C) Same trend, smaller magnitude** | ≈ 63% vs 77%. It matches on 60×60 (−63% vs −63%) but is smaller on 30×30 and 100×100, where node savings depend strongly on obstacle layout (wide spread across random maps, Part 9) |
+| Planning time | **(C) Lower** | Python adds a fixed per-node cost (computing ω) plus the pruning step. On 30×30 a search takes under 1 ms, so this overhead hides most of the saving (the result varies from about 0% to 12% between machines). On 100×100 our reduction (≈ 58–60%) is close to the paper's 64%. The paper's times are also rounded to 0.01 s, so "0.04 → 0.01 s = 75%" could be anything from 57% to 89% |
+| Corners ≥ 45° | **(B) Higher, but not a better method** | ≈ 84% vs 38%. The difference comes from how the under-specified pruning rule is read (Part 10 shows the reading alone changes corners up to 2×), not from a better algorithm |
+| **Overall** | **(A) Comparable, qualitative reproduction** | Every claimed effect has the right sign and is statistically significant over 150 maps, but the magnitudes differ for the reasons below |
 
-Over 150 random maps every claimed effect has the right sign and is statistically significant. Two further findings:
-- The raw Adaptive A\\* path is **not optimal** on many maps, because the heuristic is inadmissible.
-- **A\\* + pruning alone** is usually shorter than Adaptive A\\*. The length and smoothness gains therefore come mainly from the redundant point deletion, while the adaptive heuristic mainly buys search speed.
+**Why the results differ, factor by factor:**
+- **Dataset:** proxy maps instead of the unpublished originals. The baseline statistics match within about 1–20% (Part 4), but obstacle layout drives node savings.
+- **Settings and parameters:** the motion model, corner cutting, line-of-sight test and pruning order are not stated in the paper (D2–D7). They change corners and lengths noticeably.
+- **Randomness:** the algorithms are deterministic, so length, nodes and corners are exactly repeatable. Map randomness is controlled by fixed seeds. Time is the only noisy metric, which is why we use medians and a paired study with confidence intervals.
+- **Software and hardware:** MATLAB on an i5 laptop vs Python on a cloud CPU. Absolute times are not comparable, so only relative changes are compared.
+- **Missing details:** the 17 gaps listed in Part 0 (Q7). In addition, the paper's own numbers are inconsistent (Part 5.1).
+- **Our deviations:** D1–D10, applied identically to all planners, so they do not favour any method.
 
-The full discussion, with every assumption and deviation, is in the repository: `docs/01_analysis_and_feasibility.md` and `docs/02_reproduction_results.md`.
+**What our reproduction adds beyond the paper:**
+1. The adaptive search **is not optimal**. Its heuristic is inadmissible (it overestimates by up to 20.7%, Part 2.2), and the raw Adaptive A\\* path is longer than the optimal path on many random maps (Part 9).
+2. **The length and smoothness gains come from the pruning step, not from the adaptive search.** A\\* + pruning alone is usually *shorter* than Adaptive A\\* (Part 9). The paper's own Table 1 shows the same: pruning alone gives 38.74 m vs 39.72 m for the full method.
+3. **The real benefit of the adaptive heuristic is speed:** far fewer expanded nodes, with path quality close to A\\* + pruning.
+4. Compared on published numbers, Adaptive A\\* still improves more over A\\* than Chen et al. and Zhang et al. do, so the paper's ranking holds.
+
+## 12. Limitations and conclusion
+**Limitations:**
+- Proxy maps instead of the original maps.
+- Chen et al. and Zhang et al. not re-implemented.
+- Python timing is not directly comparable with MATLAB timing.
+- Static grids only, as in the paper: no robot footprint and no dynamic obstacles.
+
+**Conclusion.** The independent implementation reproduces the paper's qualitative claims: fewer expanded nodes, less time on larger maps, and shorter and smoother paths than A\\*. The path length matches closely. Node and time savings are smaller than published, and the corner reduction depends on an ambiguous step. Our extra experiments show that the adaptive heuristic trades optimality for speed, and that the redundant point deletion is responsible for most of the path-quality improvement.
 """),
     ]
     for i, cell in enumerate(cells):
