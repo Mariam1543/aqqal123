@@ -28,6 +28,7 @@ adaptive-astar-reimplementation/
 ├── results/                   reproduced_results.csv, comparison.{csv,md}, robustness.{csv,md}, environment.json
 ├── figures/                   PNG figures for the report
 ├── docs/                      01_analysis_and_feasibility.md, 02_reproduction_results.md
+├── kaggle/                    adaptive_astar_kaggle.ipynb (Kaggle runner)
 └── tests/test_core.py         unit tests
 ```
 
