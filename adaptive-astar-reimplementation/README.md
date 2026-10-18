@@ -20,11 +20,12 @@ adaptive-astar-reimplementation/
 │   └── maps.py                map sets (digitised paper maps, proxy maps) + random-map generators
 ├── scripts/
 │   ├── digitize_figure5.py    digitises the paper's Fig. 5 into maps/paper_map{1,2,3}.csv
+│   ├── compare_paper_figures.py  compares our explored cells/paths with the paper's Figs. 8 and 9
 │   ├── calibrate_maps.py      builds the proxy maps maps/map{1,2,3}.csv (first phase)
 │   ├── run_experiments.py     reproduces Tables 1-5, compares with the paper, robustness study
 │   ├── timing_study.py        paired, interleaved timing of Adaptive A* vs A*
 │   └── make_figures.py        all figures in figures/
-├── data/                      published_results.csv (Tables 1-5) + paper_figure5_maps.png (the paper's Fig. 5)
+├── data/                      published_results.csv (Tables 1-5) + screenshots of the paper's Figs. 4, 5, 8, 9, 10
 ├── maps/                      paper_map{1,2,3}.csv (digitised, final) and map{1,2,3}.csv (proxy) + calibration.json
 ├── results/paper_maps/        FINAL results on the digitised maps (comparison, timing, robustness)
 ├── results/                   first-phase results on the proxy maps
@@ -86,7 +87,7 @@ Adaptive A\* vs A\*, mean over Tables 2-4:
 | Expanded-node reduction | 76.6% | 59.0% | 75.8% |
 | Reduction of corners >= 45 deg | 38.1% | 67.4% | 63.2% |
 
-The paper's published Adaptive A\* node counts are matched only when the hybrid heuristic is used without the ½ of Eq. 7 (36 / 268 / 113 published vs 40 / 261 / 114). Each improvement on its own does match the equations as printed.
+The paper's published Adaptive A\* node counts are matched only when the hybrid heuristic is used without the ½ of Eq. 7 (36 / 268 / 113 published vs 40 / 261 / 114). Each improvement on its own does match the equations as printed. The paper's result figures confirm this: in Figs. 8(f) and 9(f), the equations as printed expand 29 and 122 cells that the paper never explored, while V4 expands only 2 such cells on each map. A\* and Dijkstra match the paper's shaded regions cell for cell (`results/paper_maps/figure_agreement.md`).
 
 Over 150 random maps every effect has the claimed direction, but:
 - the adaptive search is not optimal (its raw path is suboptimal on 90 of 150 maps);

@@ -45,6 +45,28 @@ The input is the paper's Fig. 5 (`data/paper_figure5_maps.png`, a 753 × 337 px 
 | Baseline heuristic | Euclidean: 130 / 715 / 2188 nodes. Octile: 106 / 604 / 1298. Chebyshev: 271 / 1021 / 3922. Manhattan: 40 / 281 / 113 | **Euclidean** (confirms D3) |
 | Line of sight for pruning | Bresenham raster line: pruned lengths 39.21, 87.25 and 140.72 m vs paper 38.74, 87.49 and 140.67 m. The strict supercover test: 40.03, 88.30 and 144.95 m | **Bresenham** (D6 changed; the strict test stays available) |
 
+### 1.3 Validation against the paper's result figures (Figs. 4, 8, 9)
+
+The paper's result figures shade every expanded cell grey and draw the final path in red. `scripts/compare_paper_figures.py` classifies every free cell of the paper's panels and compares them with our planners (`results/paper_maps/figure_agreement.md`, `figures/paper_maps/fig_paper_vs_ours_panels.png`). *Extra* counts cells we expand that the paper shows as **not** explored.
+
+| Paper panel | Our planner | Our nodes | Paper-explored cells we also expand | Extra cells |
+|---|---|---|---|---|
+| Fig. 8(a) 30×30 | A\* | 130 | 99/99 (100%) | **0** |
+| Fig. 8(b) 30×30 | Dijkstra | 633 | 600/600 (100%) | **0** |
+| Fig. 8(f) 30×30 | Adaptive A\*, Eqs. as printed | 66 | 12/18 | 29 |
+| Fig. 8(f) 30×30 | Adaptive A\*, **V4** | 40 | 13/18 | **2** |
+| Fig. 9(a) 60×60 | A\* | 715 | 638/743\* | **0** |
+| Fig. 9(f) 60×60 | Adaptive A\*, Eqs. as printed | 370 | 209/578\* | 122 |
+| Fig. 9(f) 60×60 | Adaptive A\*, **V4** | 261 | 228/578\* | **2** |
+
+\*On the 60×60 panels the dense grid lines make the shading threshold over-detect explored cells, so there the *Extra* column is the reliable measure.
+
+- **A\* and Dijkstra:** the paper's explored regions are reproduced cell for cell.
+- **Adaptive A\*:** the version that follows Eqs. 5–7 as printed expands 29 and 122 cells that the paper never explored, while **V4 expands only 2 such cells on each map**. Visually, V4's explored patches and path shape on 60×60 coincide with Fig. 9(f).
+- This is a second, independent line of evidence, after the node counts, that the authors' full method used E+M without the ½.
+- The 100×100 panels (≈1.5 px per cell) are too coarse for this check.
+- **Fig. 4** (the pruning diagram) keeps node A fixed while B is deleted and C advances. This is the *anchor-based* window we implement by default.
+
 ---
 
 ## 2. Results — published vs reproduced

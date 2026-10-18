@@ -251,7 +251,9 @@ print(f"max hybrid / true cost = {max(ratios):.4f}  (at 45 degrees) -> the hybri
 ### 2.4 Redundant point deletion (Contribution 3, Sec. 3.3, Fig. 4)
 A three-node window (P*i*, P*i*+1, P*i*+2) moves along the raw path:
 - **Step 2:** if the three nodes are collinear, delete the middle one.
-- **Step 3:** otherwise, connect P*i* to P*i*+2. If that straight line touches no obstacle cell (exact *line-of-sight* test), delete the middle node; if it does, keep it.
+- **Step 3:** otherwise, connect P*i* to P*i*+2. If that straight line touches no obstacle cell (*line-of-sight* test), delete the middle node; if it does, keep it.
+
+The paper's Fig. 4 keeps node A fixed while B is deleted and C advances, so we implement an **anchor-based** window. The line-of-sight test can be the strict "supercover" test or a Bresenham raster line; the paper's numbers indicate Bresenham (Part 4).
 """),
         code(module("smoothing")),
         md("### 2.5 Evaluation metrics (as in Tables 1–5)\nPath length (m), expanded nodes (size of CLOSED), number of corners with heading change ≥ 45°, and planning time."),
@@ -853,6 +855,38 @@ display(pd.DataFrame(rows).set_index("metric"))
 - **Corners.** The paper's counts sit between the anchor and single-pass pruning readings, and no single reading reproduces all of them. The pruning step is under-specified.
 """),
         md("""
+### 10.1 Second line of evidence: the paper's own result figures
+
+The paper's Figs. 8 and 9 shade every expanded cell grey. Classifying each cell of those panels (repository script `scripts/compare_paper_figures.py`) gives:
+
+| Paper panel | Our planner | Our nodes | Paper-explored cells we also expand | Cells we expand that the paper did **not** |
+|---|---|---|---|---|
+| Fig. 8(a) 30×30 | A\\* | 130 | 99/99 (100%) | **0** |
+| Fig. 8(b) 30×30 | Dijkstra | 633 | 600/600 (100%) | **0** |
+| Fig. 8(f) 30×30 | Adaptive A\\*, Eqs. as printed | 66 | 12/18 | 29 |
+| Fig. 8(f) 30×30 | Adaptive A\\*, **V4** | 40 | 13/18 | **2** |
+| Fig. 9(a) 60×60 | A\\* | 715 | (grid lines blur the shading) | **0** |
+| Fig. 9(f) 60×60 | Adaptive A\\*, Eqs. as printed | 370 | (grid lines blur the shading) | 122 |
+| Fig. 9(f) 60×60 | Adaptive A\\*, **V4** | 261 | (grid lines blur the shading) | **2** |
+
+- A\\* and Dijkstra reproduce the paper's shaded regions cell for cell.
+- For Adaptive A\\*, only V4 stays inside the paper's explored region.
+
+The figure below (downloaded from the repository if Internet is on) puts the paper's panels next to ours.
+"""),
+        code("""
+PANELS_URL = ("https://raw.githubusercontent.com/Mariam1543/aqqal123/claude/relaxed-johnson-4f4051/"
+              "adaptive-astar-reimplementation/figures/paper_maps/fig_paper_vs_ours_panels.png")
+try:
+    import urllib.request
+    request = urllib.request.Request(PANELS_URL, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(request, timeout=20) as resp:
+        panels = Image.open(io.BytesIO(resp.read()))
+    plt.figure(figsize=(12, 8.5)); plt.imshow(panels); plt.axis("off"); plt.show()
+except Exception as exc:
+    print("Comparison figure not downloaded (no Internet?):", type(exc).__name__)
+"""),
+        md("""
 ## 11. Critical analysis (assignment Section 6)
 
 **What reproduces exactly.** On the digitised maps, every *baseline* number of the paper is reproduced almost exactly:
@@ -872,7 +906,7 @@ This confirms that the maps, the motion model and our implementation of every bu
 | Planning time | −68.7% | ≈ −40% (paired) | ≈ −59% | **(C)** lower, mostly a Python vs MATLAB effect |
 | Corners ≥ 45° | −38.1% | ≈ −67% | ≈ −63% | **(B)** numerically, but from the pruning reading, not a better method |
 
-**Overall: (A) comparable.** The paper's results are reproducible on its own maps, with one important qualification: the published Adaptive A\\* numbers correspond to E+M **without** the ½ of Eq. 7. With the equations exactly as printed, the method is less greedy and saves fewer nodes.
+**Overall: (A) comparable.** The paper's results are reproducible on its own maps, with one important qualification: the published Adaptive A\\* numbers correspond to E+M **without** the ½ of Eq. 7. This is confirmed independently by the node counts (Part 10) and by the explored regions drawn in the paper's Figs. 8 and 9 (Part 10.1). With the equations exactly as printed, the method is less greedy and saves fewer nodes.
 
 **Technical justification of the remaining differences:**
 - **Dataset.** We use our digitisation of Fig. 5, validated by the exact baseline matches. One start cell is an obstacle in the paper's own figure, so we free that cell for that experiment.
