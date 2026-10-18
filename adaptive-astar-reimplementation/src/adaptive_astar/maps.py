@@ -28,6 +28,29 @@ PAPER_POINTS: dict[str, list[tuple[int, int]]] = {
     "map3": [(2, 2), (99, 99)],
 }
 MAP_SIZES = {"map1": 30, "map2": 60, "map3": 100}
+
+# The two map sets used in the experiments.
+#  * "paper": the paper's own maps, digitised from its Fig. 5 (scripts/digitize_figure5.py).
+#    Diagonal corner cutting is allowed and pruning uses a Bresenham line of sight: with
+#    these settings A* and Dijkstra reproduce the paper's published node counts.
+#  * "proxy": procedurally generated maps calibrated to the paper's statistics
+#    (scripts/calibrate_maps.py), with the conservative settings (no corner cutting,
+#    supercover line of sight). Used before the figure was available, and for the
+#    random-map robustness study.
+MAP_SETS = {
+    "paper": {"files": {"30x30": "paper_map1", "60x60": "paper_map2", "100x100": "paper_map3"},
+              "corner_cutting": True, "los": "bresenham"},
+    "proxy": {"files": {"30x30": "map1", "60x60": "map2", "100x100": "map3"},
+              "corner_cutting": False, "los": "supercover"},
+}
+
+
+def load_map_set(name: str, maps_dir) -> dict:
+    """Load the three maps of a map set as ``{"30x30": GridMap, ...}``."""
+    from pathlib import Path
+    cfg = MAP_SETS[name]
+    return {size: GridMap.load_csv(Path(maps_dir) / f"{stem}.csv", allow_corner_cutting=cfg["corner_cutting"])
+            for size, stem in cfg["files"].items()}
 MAP_KINDS = {"map1": "irregular", "map2": "maze", "map3": "array"}
 
 

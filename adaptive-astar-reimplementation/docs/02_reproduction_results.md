@@ -1,5 +1,9 @@
 # Parts 4–6 — Independent Re-Implementation, Experimental Reproduction and Critical Analysis
 
+> **Note:** this document describes the **first phase** of the study, run on *proxy* maps because the paper's maps were only available as a figure. The **final results**, on the paper's own maps digitised from its Fig. 5, are in [`03_paper_maps_reproduction.md`](03_paper_maps_reproduction.md).
+>
+> On the digitised maps two settings changed, both inferred from the paper's numbers: diagonal corner cutting is allowed, and pruning uses a Bresenham line of sight. The implementation description (§4) still applies.
+
 All numbers below are produced by the scripts in this repository:
 - `results/comparison.md` (every table, every algorithm);
 - `results/timing_study.md` (paired timing);

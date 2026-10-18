@@ -38,6 +38,16 @@ def hybrid(a: Cell, b: Cell) -> float:
     return 0.5 * (math.hypot(dx, dy) + dx + dy)
 
 
+def hybrid_sum(a: Cell, b: Cell) -> float:
+    """Euclidean + Manhattan WITHOUT the 1/2 of Eq. (7) (sensitivity variant "V4").
+
+    Not the paper's equation. On the digitised paper maps, the full Adaptive A*
+    built on this sum expands almost exactly the node counts published for the
+    full method, while each component alone matches Eq. (6)/(7) as printed.
+    """
+    return 2.0 * hybrid(a, b)
+
+
 def zero(a: Cell, b: Cell) -> float:
     """h = 0: A* degenerates into Dijkstra's algorithm."""
     return 0.0
@@ -49,6 +59,7 @@ DISTANCES: dict[str, DistanceFn] = {
     "chebyshev": chebyshev,
     "octile": octile,
     "hybrid": hybrid,
+    "hybrid_sum": hybrid_sum,
     "zero": zero,
 }
 

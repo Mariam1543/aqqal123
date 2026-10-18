@@ -1,10 +1,13 @@
 """Redundant point deletion strategy (paper Sec. 3.3, Fig. 4).
 
-Path nodes are cell centres. A straight segment between two nodes is safe only
-if it does not touch any obstacle cell. Cells are treated as closed squares
-``[x - 0.5, x + 0.5] x [y - 0.5, y + 0.5]``, so a segment that merely grazes an
-obstacle corner is rejected (assumption M9: conservative, no corner cutting -
-consistent with the search's no-corner-cutting rule).
+Path nodes are cell centres. Two line-of-sight tests are available (assumption M9):
+
+* ``"supercover"`` (default, conservative): a segment is free only if it touches
+  no obstacle cell; cells are closed squares ``[x-0.5, x+0.5] x [y-0.5, y+0.5]``,
+  so a segment that merely grazes an obstacle corner is rejected.
+* ``"bresenham"``: only the cells of the Bresenham raster line must be free.
+  This is the usual MATLAB-style test; it lets a segment clip obstacle corners.
+  On the digitised paper maps it reproduces the paper's path lengths closely.
 """
 
 from __future__ import annotations
@@ -44,9 +47,32 @@ def segment_cells(a: Cell, b: Cell) -> list[Cell]:
     return cells
 
 
-def line_of_sight(grid: GridMap, a: Cell, b: Cell) -> bool:
+def bresenham_cells(a: Cell, b: Cell) -> list[Cell]:
+    """Cells of the Bresenham raster line from a to b (inclusive)."""
+    (x0, y0), (x1, y1) = a, b
+    dx, dy = abs(x1 - x0), -abs(y1 - y0)
+    sx, sy = (1 if x0 < x1 else -1), (1 if y0 < y1 else -1)
+    err = dx + dy
+    cells = []
+    while True:
+        cells.append((x0, y0))
+        if (x0, y0) == (x1, y1):
+            return cells
+        e2 = 2 * err
+        if e2 >= dy:
+            err += dy
+            x0 += sx
+        if e2 <= dx:
+            err += dx
+            y0 += sy
+
+
+LOS_METHODS = {"supercover": segment_cells, "bresenham": bresenham_cells}
+
+
+def line_of_sight(grid: GridMap, a: Cell, b: Cell, method: str = "supercover") -> bool:
     """True if the straight segment between cell centres a and b is obstacle-free."""
-    for x, y in segment_cells(a, b):
+    for x, y in LOS_METHODS[method](a, b):
         if not grid.is_free(x, y):
             return False
     return True
@@ -57,7 +83,8 @@ def is_collinear(p: Cell, q: Cell, r: Cell) -> bool:
     return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]) == 0
 
 
-def delete_redundant_points(grid: GridMap, path: list[Cell], mode: str = "anchor") -> list[Cell]:
+def delete_redundant_points(grid: GridMap, path: list[Cell], mode: str = "anchor",
+                            los: str = "supercover") -> list[Cell]:
     """Remove redundant nodes from a grid path (Steps 1-4 of Sec. 3.3).
 
     Walk the path with a three-node window (P_i, P_i+1, P_i+2) anchored at P_i:
@@ -83,10 +110,11 @@ def delete_redundant_points(grid: GridMap, path: list[Cell], mode: str = "anchor
     i = 1
     while i < len(path) - 1:
         middle, nxt = path[i], path[i + 1]
-        # Step 2: a collinear triple is free by construction (anchor->middle was
-        # already verified and middle->nxt is a free grid step). Step 3: otherwise
-        # the shortcut anchor->nxt needs an explicit line-of-sight test.
-        removable = is_collinear(anchor, middle, nxt) or line_of_sight(grid, anchor, nxt)
+        # Step 2: with the supercover test a collinear triple is free by construction
+        # (anchor->middle was already verified and middle->nxt is a free grid step).
+        # Step 3: otherwise the shortcut anchor->nxt needs an explicit line-of-sight test.
+        removable = (los == "supercover" and is_collinear(anchor, middle, nxt)) \
+            or line_of_sight(grid, anchor, nxt, los)
         if not removable:
             kept.append(middle)                    # Step 3: shortcut blocked, keep node
             anchor = middle

@@ -111,6 +111,52 @@ class TestSmoothing(unittest.TestCase):
         self.assertEqual(delete_redundant_points(g, path, "anchor"), [(0, 0), (4, 0)])
 
 
+class TestBresenhamLineOfSight(unittest.TestCase):
+    def test_bresenham_raster(self):
+        from adaptive_astar.smoothing import bresenham_cells
+        self.assertEqual(bresenham_cells((0, 0), (3, 3)), [(0, 0), (1, 1), (2, 2), (3, 3)])
+        self.assertEqual(bresenham_cells((0, 0), (4, 0)), [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)])
+
+    def test_bresenham_is_more_lenient_than_supercover(self):
+        occ = np.zeros((3, 3), dtype=bool)
+        occ[0, 1] = True                       # obstacle touching the diagonal (0,0)-(2,2)
+        g = GridMap(occ)
+        self.assertFalse(line_of_sight(g, (0, 0), (2, 2), "supercover"))
+        self.assertTrue(line_of_sight(g, (0, 0), (2, 2), "bresenham"))
+
+
+class TestDigitisedPaperMaps(unittest.TestCase):
+    """The digitised Fig. 5 maps reproduce the paper's published baseline numbers."""
+
+    @classmethod
+    def setUpClass(cls):
+        from adaptive_astar.maps import load_map_set
+        cls.maps = load_map_set("paper", Path(__file__).resolve().parents[1] / "maps")
+
+    def test_astar_and_dijkstra_node_counts_match_paper(self):
+        g = self.maps["30x30"]
+        s, t = from_paper(2, 2), from_paper(28, 28)
+        self.assertEqual(astar(g, s, t).expanded, 130)            # paper Table 2: 130
+        self.assertAlmostEqual(dijkstra(g, s, t).expanded, 632, delta=5)   # paper: 632
+        self.assertAlmostEqual(astar(self.maps["60x60"], s, from_paper(58, 58)).expanded, 716, delta=5)
+        g3, t3 = self.maps["100x100"], from_paper(99, 99)
+        self.assertAlmostEqual(dijkstra(g3, s, t3).expanded, 7520, delta=10)   # paper Table 4: 7520
+        self.assertAlmostEqual(astar(g3, s, t3).expanded, 2191, delta=10)      # paper Table 4: 2191
+        self.assertAlmostEqual(astar(g3, s, t3).cost, 146.56, delta=0.05)      # paper Table 4: 146.56
+
+    def test_table5_random_pair_matches_paper_exactly(self):
+        # Paper Table 5, 30x30, A* from (4,24) to (29,2): 38.21 m, 250 nodes, 14 corners.
+        # (4,24) is an obstacle in the paper's own figure; the paper planned from it anyway.
+        occ = self.maps["30x30"].occ.copy()
+        s = from_paper(4, 24)
+        occ[s[1], s[0]] = False
+        g = GridMap(occ, allow_corner_cutting=True)
+        res = astar(g, s, from_paper(29, 2))
+        self.assertAlmostEqual(res.cost, 38.21, places=2)
+        self.assertEqual(res.expanded, 250)
+        self.assertEqual(count_sharp_turns(res.path), 14)
+
+
 class TestMetrics(unittest.TestCase):
     def test_turn_counting(self):
         path = [(0, 0), (1, 0), (2, 1), (2, 2), (1, 3)]   # 45, 45, 45 degree turns
