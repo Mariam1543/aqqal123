@@ -251,6 +251,19 @@ The abstract's averages **check out** against Tables 2–4:
 - **Dijkstra's expanded counts estimate the free reachable cells.** Dijkstra expands 632 / 1740 / 7520 nodes. Since the goals sit near the far corner, Dijkstra explores almost every reachable free cell. That implies roughly **30% / 52% / 25% obstacle cells** for map1 / map2 / map3, which is a check for the digitised maps.
 - **The A\* baseline expanded counts** (130 / 716 / 2191) are a second check.
 
+### 8.6 Further findings after digitising the paper's own maps (Fig. 5)
+
+Once the paper's Fig. 5 was digitised (see `docs/03_paper_maps_reproduction.md`), several open questions above could be settled with evidence:
+
+- **M1 (maps):** resolved by digitisation. Our baseline A\* and Dijkstra reproduce the paper's node counts almost exactly: 130 = 130, 715 vs 716, 2188 vs 2191, 7521 vs 7520.
+- **M2/M3 (motion model):** diagonal **corner cutting is allowed**. Without it the node counts do not match (e.g. 231 instead of 130 nodes on 30×30).
+- **M5 (baseline heuristic):** Euclidean. Octile, Chebyshev and Manhattan give clearly different node counts.
+- **M9 (line of sight):** a Bresenham raster line reproduces the paper's pruned path lengths, e.g. 140.72 vs 140.67 m on 100×100. The strict supercover test does not (144.95 m).
+- **M17 (ablation):** two rows of Table 1 (60×60) are **swapped**. The paper's "adaptive estimation" row (412 nodes) equals our distance-model run (413), and vice versa (691 vs 692). The paper's pruning row (691 nodes) is cumulative, not isolated.
+- **New finding — Table 5 start:** the start cell (4,24) of the 30×30 random pair is an **obstacle in the paper's own figure**. With that one cell freed, our A\* matches the paper exactly: 38.21 m, 250 nodes, 14 corners.
+- **New finding — full method vs Eq. 7:** each improvement alone matches the equations as printed (e.g. hybrid distance alone: 46 vs 45 nodes, 41.46 vs 41.45 m). The **combined** Adaptive A\* is different: its published node counts (36 / 268 / 113) are reproduced only when the hybrid heuristic is used **without the ½** (40 / 261 / 114). The equations as printed give 66 / 370 / 448. The authors' combined implementation therefore most likely differs from Eqs. 5–7 as printed.
+- **Still unresolved:** the pruning order (M10) and the corner definition (M7). No reading reproduces all the published corner counts.
+
 ---
 
 ## Implications for the re-implementation plan (Parts 4–6)

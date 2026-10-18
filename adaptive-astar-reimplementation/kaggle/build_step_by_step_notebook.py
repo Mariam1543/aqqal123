@@ -411,7 +411,8 @@ FIG5_URL = ("https://raw.githubusercontent.com/Mariam1543/aqqal123/claude/relaxe
             "adaptive-astar-reimplementation/data/paper_figure5_maps.png")
 try:
     import urllib.request
-    with urllib.request.urlopen(FIG5_URL, timeout=20) as resp:
+    request = urllib.request.Request(FIG5_URL, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(request, timeout=20) as resp:
         fig5 = Image.open(io.BytesIO(resp.read()))
 except Exception as exc:
     fig5 = None
