@@ -16,6 +16,7 @@ AEF+DMO (cumulative)   hybrid           Eq. (6)         no             extra
 Adaptive A*            hybrid           Eq. (6)         yes            Tab 1-5
 A*+Octile+RPD          octile           1               yes            extra
 ... (single-pass)      as above         as above        single-pass    extra
+... (V4: E+M w/o 1/2)  Euclid+Manhattan Eq. (6)         yes            extra
 =====================  ===============  ==============  =============  =======
 """
 
@@ -28,7 +29,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from .grid import Cell, GridMap
-from .heuristics import adaptive_weight, euclidean, hybrid, octile
+from .heuristics import adaptive_weight, euclidean, hybrid, hybrid_sum, octile
 from .metrics import count_sharp_turns, path_length
 from .search import SearchResult, astar, bidirectional_astar, dijkstra
 from .smoothing import delete_redundant_points
@@ -59,9 +60,11 @@ class PlannerSpec:
     adaptive: bool = False         # use the adaptive weight of Eq. (6)
     prune: bool = False            # apply redundant point deletion (Sec. 3.3)
     prune_mode: str = "anchor"     # anchor | single-pass (sensitivity, assumption M10)
+    los: str = "supercover"        # supercover | bresenham line-of-sight test (assumption M9)
 
     def search_only(self, grid: GridMap, start: Cell, goal: Cell) -> SearchResult:
-        h = {"euclidean": euclidean, "hybrid": hybrid, "octile": octile}[self.heuristic]
+        h = {"euclidean": euclidean, "hybrid": hybrid, "hybrid_sum": hybrid_sum,
+             "octile": octile}[self.heuristic]
         if self.search == "dijkstra":
             return dijkstra(grid, start, goal)
         if self.search == "bidirectional":
@@ -71,7 +74,8 @@ class PlannerSpec:
 
     def plan(self, grid: GridMap, start: Cell, goal: Cell) -> PlanResult:
         res = self.search_only(grid, start, goal)
-        final = delete_redundant_points(grid, res.path, self.prune_mode) if (self.prune and res.found) else res.path
+        final = (delete_redundant_points(grid, res.path, self.prune_mode, self.los)
+                 if (self.prune and res.found) else res.path)
         return PlanResult(
             planner=self.name, raw_path=res.path, path=final,
             expanded=res.expanded, generated=res.generated, raw_cost=res.cost,
@@ -94,6 +98,7 @@ PLANNERS: dict[str, PlannerSpec] = {p.name: p for p in [
     PlannerSpec("Redundant point deletion (single-pass)", prune=True, prune_mode="single-pass"),
     PlannerSpec("Adaptive A* (single-pass pruning)", heuristic="hybrid", adaptive=True,
                 prune=True, prune_mode="single-pass"),
+    PlannerSpec("Adaptive A* (V4: E+M without 1/2)", heuristic="hybrid_sum", adaptive=True, prune=True),
 ]}
 
 

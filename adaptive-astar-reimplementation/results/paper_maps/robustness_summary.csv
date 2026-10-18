@@ -1,0 +1,25 @@
+map,algorithm,metric,mean_change,std_change,median_change,wins,ties,losses,n,wilcoxon_p
+map1,Adaptive A*,time_s,-22.7684,27.2345,-25.4521,44,0,6,50,4.2364e-08
+map1,Adaptive A*,length_m,-1.33819,1.0419,-1.4248,45,1,4,50,4.11214e-08
+map1,Adaptive A*,expanded_nodes,-50.4178,14.6799,-50.9327,50,0,0,50,7.5501e-10
+map1,Adaptive A*,corners_ge45,-81.3316,16.3981,-82.5758,49,1,0,50,1.07176e-09
+map1,Redundant point deletion,time_s,10.8634,12.2327,8.64872,1,0,49,50,3.55271e-15
+map1,Redundant point deletion,length_m,-1.71633,0.641873,-1.7144,49,1,0,50,1.10983e-09
+map1,Redundant point deletion,expanded_nodes,0,0,0,0,50,0,50,1
+map1,Redundant point deletion,corners_ge45,-82.8897,16.3733,-85.7143,49,1,0,50,1.06418e-09
+map2,Adaptive A*,time_s,-21.4572,30.9787,-24.3993,41,0,9,50,2.19128e-05
+map2,Adaptive A*,length_m,-1.07378,3.29145,-2.0588,37,0,13,50,0.000620771
+map2,Adaptive A*,expanded_nodes,-39.8383,23.0912,-39.8196,48,0,2,50,2.43361e-13
+map2,Adaptive A*,corners_ge45,-69.7123,16.6544,-73.7986,49,0,1,50,7.80234e-10
+map2,Redundant point deletion,time_s,7.10863,15.1469,6.67032,9,0,41,50,0.000529488
+map2,Redundant point deletion,length_m,-3.40429,1.13882,-3.37541,50,0,0,50,1.77636e-15
+map2,Redundant point deletion,expanded_nodes,0,0,0,0,50,0,50,1
+map2,Redundant point deletion,corners_ge45,-72.9176,12.99,-73.913,50,0,0,50,7.33937e-10
+map3,Adaptive A*,time_s,-62.7045,12.7685,-66.1137,50,0,0,50,1.77636e-15
+map3,Adaptive A*,length_m,-1.76073,2.25217,-2.55731,38,0,12,50,3.00675e-06
+map3,Adaptive A*,expanded_nodes,-71.2151,9.68648,-73.7176,50,0,0,50,1.77636e-15
+map3,Adaptive A*,corners_ge45,-81.3946,10.6304,-82.971,50,0,0,50,7.30283e-10
+map3,Redundant point deletion,time_s,4.9261,14.2806,2.85997,10,0,40,50,2.08107e-05
+map3,Redundant point deletion,length_m,-4.03242,0.865613,-3.84664,50,0,0,50,1.77636e-15
+map3,Redundant point deletion,expanded_nodes,0,0,0,0,50,0,50,1
+map3,Redundant point deletion,corners_ge45,-82.5509,8.42152,-83.3333,50,0,0,50,7.37105e-10

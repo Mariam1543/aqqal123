@@ -12,8 +12,10 @@ Usage:  python scripts/make_figures.py   (after run_experiments.py)
 
 from __future__ import annotations
 
+import argparse
 import math
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import matplotlib
@@ -28,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from adaptive_astar import PLANNERS, GridMap, from_paper, hybrid, octile  # noqa: E402
+from adaptive_astar.maps import MAP_SETS, load_map_set  # noqa: E402
 
 FIG = ROOT / "figures"
 RES = ROOT / "results"
@@ -46,16 +49,21 @@ plt.rcParams.update({
     "axes.facecolor": SURFACE, "savefig.dpi": 200, "savefig.bbox": "tight",
 })
 
-MAPS = {"30x30": "map1", "60x60": "map2", "100x100": "map3"}
+MAP_SET = {"name": "paper"}          # set in main()
+MAP_LABEL = {"paper": "digitised paper", "proxy": "proxy"}
 
 
 def load(size: str) -> GridMap:
-    return GridMap.load_csv(ROOT / "maps" / f"{MAPS[size]}.csv")
+    return load_map_set(MAP_SET["name"], ROOT / "maps")[size]
 
 
 def draw_panel(ax, grid: GridMap, start, goal, planner: str, title: str, color=BLUE):
     s, t = from_paper(*start), from_paper(*goal)
-    res = PLANNERS[planner].plan(grid, s, t)
+    if not grid.is_free(*s):     # Table 5 start (4, 24) is an obstacle in the paper's own map1
+        occ = grid.occ.copy()
+        occ[s[1], s[0]] = False
+        grid = GridMap(occ, allow_corner_cutting=grid.allow_corner_cutting)
+    res = replace(PLANNERS[planner], los=MAP_SETS[MAP_SET["name"]]["los"]).plan(grid, s, t)
     img = np.zeros(grid.occ.shape, dtype=int)
     for x, y in res.closed:
         img[y, x] = 1
@@ -88,7 +96,7 @@ def fig_ablation() -> None:
         fig, axes = plt.subplots(1, 4, figsize=(11, 3.2))
         for ax, (name, title) in zip(axes, panels):
             draw_panel(ax, grid, (2, 2), goal, name, title)
-        fig.suptitle(f"Ablation on the {size} proxy map (explored cells shaded; "
+        fig.suptitle(f"Ablation on the {size} {MAP_LABEL[MAP_SET['name']]} map (explored cells shaded; "
                      "L = length, N = expanded nodes, C = corners >= 45 deg)", color=INK2, y=1.02)
         fig.savefig(FIG / f"fig_ablation_{size}.png")
         plt.close(fig)
@@ -103,7 +111,7 @@ def fig_algorithms() -> None:
         for ax, (name, title) in zip(axes, panels):
             draw_panel(ax, grid, (2, 2), goal, name, title,
                        color=ORANGE if name == "Adaptive A*" else BLUE)
-        fig.suptitle(f"Reproducible algorithms on the {size} proxy map", color=INK2, y=1.02)
+        fig.suptitle(f"Reproducible algorithms on the {size} {MAP_LABEL[MAP_SET['name']]} map", color=INK2, y=1.02)
         fig.savefig(FIG / f"fig_algorithms_{size}.png")
         plt.close(fig)
 
@@ -254,7 +262,13 @@ def fig_weight_heuristic() -> None:
 
 
 def main() -> None:
-    FIG.mkdir(exist_ok=True)
+    global FIG, RES
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--map-set", choices=sorted(MAP_SETS), default="paper")
+    MAP_SET["name"] = ap.parse_args().map_set
+    if MAP_SET["name"] == "paper":
+        FIG, RES = FIG / "paper_maps", RES / "paper_maps"
+    FIG.mkdir(parents=True, exist_ok=True)
     fig_weight_heuristic()
     fig_ablation()
     fig_algorithms()

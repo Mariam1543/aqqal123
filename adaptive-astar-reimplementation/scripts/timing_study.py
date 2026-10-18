@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import gc
+from dataclasses import replace
 import sys
 import time
 from pathlib import Path
@@ -26,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from adaptive_astar import PLANNERS, GridMap, from_paper  # noqa: E402
+from adaptive_astar.maps import MAP_SETS, load_map_set  # noqa: E402
 
 CASES = [("30x30", "map1", (2, 2), (28, 28)), ("60x60", "map2", (2, 2), (58, 58)),
          ("100x100", "map3", (2, 2), (99, 99))]
@@ -36,7 +38,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--pairs", type=int, default=300)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--map-set", choices=sorted(MAP_SETS), default="paper")
     args = ap.parse_args()
+    maps = load_map_set(args.map_set, ROOT / "maps")
+    los = MAP_SETS[args.map_set]["los"]
+    out = ROOT / "results" / ("paper_maps" if args.map_set == "paper" else "")
+    out.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(args.seed)
 
     rows, md = [], ["# Interleaved timing study (Adaptive A* vs A*)", "",
@@ -45,9 +52,9 @@ def main() -> None:
                     "| Map | A* median (ms) | Adaptive A* median (ms) | Median ratio [95% CI] | "
                     "Time reduction ours | Time reduction paper | Node ratio |",
                     "|---|---|---|---|---|---|---|"]
-    a_spec, b_spec = PLANNERS["A*"], PLANNERS["Adaptive A*"]
+    a_spec, b_spec = PLANNERS["A*"], replace(PLANNERS["Adaptive A*"], los=los)
     for size, map_id, s, g in CASES:
-        grid = GridMap.load_csv(ROOT / "maps" / f"{map_id}.csv")
+        grid = maps[size]
         s, g = from_paper(*s), from_paper(*g)
         for _ in range(5):                       # warm-up
             a_spec.plan(grid, s, g)
@@ -78,10 +85,10 @@ def main() -> None:
                   f"{PUBLISHED_REDUCTION[size]:.1f}% | {nodes:.3f} |")
         print(md[-1])
     df = pd.DataFrame(rows)
-    df.to_csv(ROOT / "results" / "timing_study.csv", index=False, float_format="%.6g")
+    df.to_csv(out / "timing_study.csv", index=False, float_format="%.6g")
     mean_red = df["time_reduction_pct"].mean()
     md += ["", f"Mean time reduction over the three maps: ours {mean_red:.1f}% vs paper 68.7%."]
-    (ROOT / "results" / "timing_study.md").write_text("\n".join(md) + "\n")
+    (out / "timing_study.md").write_text("\n".join(md) + "\n")
 
 
 if __name__ == "__main__":
