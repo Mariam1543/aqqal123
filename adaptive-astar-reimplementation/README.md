@@ -21,10 +21,11 @@ adaptive-astar-reimplementation/
 ├── scripts/
 │   ├── digitize_figure5.py    digitises the paper's Fig. 5 into maps/paper_map{1,2,3}.csv
 │   ├── compare_paper_figures.py  compares our explored cells/paths with the paper's Figs. 8 and 9
-│   ├── calibrate_maps.py      builds the proxy maps maps/map{1,2,3}.csv (first phase)
 │   ├── run_experiments.py     reproduces Tables 1-5, compares with the paper, robustness study
+│   ├── admissibility.py       how far each heuristic overestimates the true cost (analytic + measured)
 │   ├── timing_study.py        paired, interleaved timing of Adaptive A* vs A*
 │   └── make_figures.py        all figures in figures/
+├── archive/                   first-phase code not used for the final results (calibrate_maps.py)
 ├── data/                      published_results.csv (Tables 1-5) + screenshots of the paper's Figs. 4, 5, 8, 9, 10
 ├── maps/                      paper_map{1,2,3}.csv (digitised, final) and map{1,2,3}.csv (proxy) + calibration.json
 ├── results/paper_maps/        FINAL results on the digitised maps (comparison, timing, robustness)
@@ -61,11 +62,13 @@ python scripts/run_experiments.py --map-set paper --repeats 30 --robust-maps 50
 # 4. paired timing study for the planning-time metric (about 1 min)
 python scripts/timing_study.py --map-set paper --pairs 300
 
-# 5. figures
+# 5. figures, comparison with the paper's Figs. 8-9, admissibility check
 python scripts/make_figures.py --map-set paper
+python scripts/compare_paper_figures.py
+python scripts/admissibility.py
 ```
 
-`--map-set paper` is the default. `--map-set proxy` reproduces the first phase on the calibrated proxy maps (`scripts/calibrate_maps.py --budget-scale 4` rebuilds them).
+`--map-set paper` is the default. `--map-set proxy` reproduces the first phase on the calibrated proxy maps (`archive/calibrate_maps.py --budget-scale 4` rebuilds them).
 
 Quick smoke run: `python scripts/run_experiments.py --repeats 3 --robust-maps 5`.
 
@@ -73,25 +76,55 @@ The final tables are written to `results/paper_maps/comparison.md`. The discussi
 
 ## Headline results (paper's own maps, digitised from Fig. 5)
 
-**The baselines reproduce the paper almost exactly.**
+Main results follow the paper's Eqs. 5–7 **exactly as printed**. "V4" is a hypothesis about the authors' code, not the paper's method.
+
+**The baselines agree closely with the paper.** Part of this agreement is by calibration (see *Calibration* below).
 - A\* nodes: 130 vs 130, 715 vs 716, 2188 vs 2191.
 - Dijkstra nodes: 633 vs 632, 1741 vs 1740, 7521 vs 7520.
-- Table 5 pair (4,24)→(29,2): 38.21 m / 250 nodes / 14 corners, identical to the paper.
+- Table 5 pair (4,24)→(29,2): 38.21 m / 250 nodes / 14 corners, identical to the paper. The start cell (4,24) is an obstacle in the paper's own figure; we free that one cell for that run.
 
 Adaptive A\* vs A\*, mean over Tables 2-4:
 
-| Metric | Published | Reproduced (Eqs. 5-7 as printed) | Reproduced (V4: E+M without ½) |
+| Metric | Published | **Ours (Eqs. 5-7 as printed)** | Hypothesis V4 (E+M without ½) |
 |---|---|---|---|
-| Planning-time reduction | 68.7% | 40.0% (paired timing) | 57.5% |
-| Path-length reduction | 2.66 m | 3.70 m | 2.88 m |
-| Expanded-node reduction | 76.6% | 59.0% | 75.8% |
-| Reduction of corners >= 45 deg | 38.1% | 67.4% | 63.2% |
+| Planning-time reduction | 68.7% | **40.0%** (paired timing) | 57.5% |
+| Path-length reduction | 2.66 m | **3.70 m** (1.29 m with supercover line of sight) | 2.88 m |
+| Expanded-node reduction | 76.6% | **59.0%** | 75.8% |
+| Reduction of corners >= 45 deg | 38.1% | **67.4%** (40.0% with supercover) | 63.2% |
 
-The paper's published Adaptive A\* node counts are matched only when the hybrid heuristic is used without the ½ of Eq. 7 (36 / 268 / 113 published vs 40 / 261 / 114). Each improvement on its own does match the equations as printed. The paper's result figures confirm this: in Figs. 8(f) and 9(f), the equations as printed expand 29 and 122 cells that the paper never explored, while V4 expands only 2 such cells on each map. A\* and Dijkstra match the paper's shaded regions cell for cell (`results/paper_maps/figure_agreement.md`).
+**Verdict: partly reproduced.**
 
-Over 150 random maps every effect has the claimed direction, but:
-- the adaptive search is not optimal (its raw path is suboptimal on 90 of 150 maps);
-- the length and smoothness gains come mostly from the pruning step (A\* + pruning is shorter on 110 of 150 maps).
+| Claim | Verdict |
+|---|---|
+| A\*, Dijkstra, and each improvement alone (Table 1) | **Comparable** |
+| Full Adaptive A\* as printed | **Partly comparable.** It is faster, expands fewer nodes and gives shorter, smoother paths than A\*. Its node and time reductions are smaller than published |
+| "The improved heuristic gives shorter / near-optimal paths" | **Not supported.** The length and smoothness gains come from the pruning step |
+
+**Why the node counts differ.** The published Adaptive A\* node counts (36 / 268 / 113) are *consistent with* the hybrid heuristic being used without the ½ of Eq. 7: V4 gives 40 / 261 / 114, while the equations as printed give 66 / 370 / 448. Each improvement on its own matches the equations as printed.
+
+The paper's result figures point the same way:
+- In Figs. 8(f) and 9(f), the equations as printed expand 29 and 122 cells that are white (never explored) in the paper's figure.
+- V4 expands only 2 such cells on each map.
+- A\* and Dijkstra expand no such cells (`results/paper_maps/figure_agreement.md`).
+
+This is strong evidence, not proof.
+
+**The heuristic is not admissible** (`results/paper_maps/admissibility.md`). The worst-case overestimate of the true cost is:
+- 20.7% for the hybrid term alone;
+- **58.5% for the full adaptive estimate ω·h as printed**;
+- **3.17×** for V4, which makes V4 behave almost like greedy best-first search.
+
+Over 150 random maps, every effect has the claimed direction, but:
+- the raw adaptive path is suboptimal on 90 of 150 maps;
+- A\* + pruning is shorter than Adaptive A\* on 110 of 150 maps.
+
+**Calibration.** Some settings were chosen because they made the numbers match:
+- corner cutting;
+- the Euclidean baseline heuristic;
+- ±1-cell block positions in Map 3;
+- the Bresenham line of sight.
+
+The first three were matched to **baseline** numbers only. The line-of-sight choice used the published lengths of the pruning rows, so we also report the supercover alternative. The Adaptive A\* node counts were never used for calibration.
 
 Full analysis: `docs/03_paper_maps_reproduction.md`.
 
@@ -111,7 +144,7 @@ There are two notebooks in `kaggle/`. Both run on CPU only.
   9. headline comparison;
   10. paired timing;
   11. 150-map robustness study with Wilcoxon tests;
-  12. sensitivity analysis: what the authors most likely ran (V4, pruning order).
+  12. sensitivity analysis: a hypothesis about what the authors ran (V4, pruning order).
 
   A full run takes about 1–5 minutes; set `QUICK = True` for a smoke run. The code cells are generated from `src/` by `kaggle/build_step_by_step_notebook.py`, so they always match the tested library.
 - `adaptive_astar_kaggle.ipynb` runs the repository scripts in one go. It clones the public repository (needs *Settings → Internet* on), or reads the folder uploaded as a Kaggle Dataset. Outputs go to `/kaggle/working/adaptive_astar_outputs.zip`.
@@ -151,8 +184,9 @@ Save a 0/1 CSV, with 1 = obstacle and the top row as the top of the figure, unde
 | Corner | heading change ≥ 45° between consecutive segments | assumption (M7) |
 | Timing | median of 30 runs, `perf_counter`, GC off, search + pruning | assumption (M11, M12) |
 | Robustness | 50 unseen random maps per scene, Wilcoxon signed-rank | added |
-| Table 5 start (4,24) | freed for that experiment | it is an obstacle in the paper's own Fig. 5 |
-| Full-method heuristic | Eq. 7 as printed (main); E+M without ½ as "V4" sensitivity | V4 matches the published node counts |
+| Table 5 start (4,24) | that one cell freed for that experiment | it is an obstacle in the paper's own Fig. 5; only freeing it reproduces the paper's A\* exactly (moving the start gives 224-249 nodes vs 250) |
+| Full-method heuristic | Eq. 7 as printed (main); E+M without ½ as "V4" hypothesis | V4 is consistent with the published node counts |
+| Bidirectional A\* | alternate expansions, stop at the first meeting node (not guaranteed optimal) | generic version; ref. [30] is not described in the paper |
 
 Each assumption ID (M1–M17) is explained in `docs/01_analysis_and_feasibility.md`.
 
@@ -160,8 +194,8 @@ Each assumption ID (M1–M17) is explained in `docs/01_analysis_and_feasibility.
 
 The paper uses three hand-made grid maps (30×30, 60×60, 100×100) that it publishes only as a figure (Fig. 5).
 
-- **Final results: the paper's own maps.** `scripts/digitize_figure5.py` digitises `data/paper_figure5_maps.png`, a screenshot of the open-access MDPI figure (CC BY 4.0, from Cao et al., *Electronics* 2026). Output: `maps/paper_map{1,2,3}.csv`; visual check: `figures/fig_digitised_maps.png`. Our baseline A\* and Dijkstra reproduce the paper's node counts on these maps almost exactly. Map 3's block groups were refined by ±1 cell using **baseline** statistics only.
-- **First phase: proxy maps.** These were used before the figure was available, and the random-map robustness study still uses their generators. `scripts/calibrate_maps.py` searches seeded candidates and keeps the one whose baseline statistics are closest to the published values. The proposed method is never used in calibration.
+- **Final results: the paper's own maps.** `scripts/digitize_figure5.py` digitises `data/paper_figure5_maps.png`, a screenshot of the open-access MDPI figure (CC BY 4.0, from Cao et al., *Electronics* 2026). Output: `maps/paper_map{1,2,3}.csv`; visual check: `figures/fig_digitised_maps.png`. Our baseline A\* and Dijkstra reproduce the paper's node counts on these maps almost exactly. Map 3's block groups were refined by ±1 cell using **baseline** statistics only. Map 2 has not yet been cross-checked against the paper's high-resolution Fig. 7 (pending; the figure is needed as `data/paper_figure7.png`).
+- **First phase: proxy maps.** These were used before the figure was available, and the random-map robustness study still uses their generators. `archive/calibrate_maps.py` searched seeded candidates and kept the one whose baseline statistics are closest to the published values. The proposed method is never used in calibration.
 
 ## Baselines
 

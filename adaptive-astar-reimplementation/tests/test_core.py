@@ -42,6 +42,15 @@ class TestHeuristics(unittest.TestCase):
         self.assertGreater(hybrid((0, 0), (5, 5)), octile((0, 0), (5, 5)))
         self.assertAlmostEqual(hybrid((0, 0), (5, 5)) / octile((0, 0), (5, 5)), 1.2071, places=3)
 
+    def test_full_adaptive_cost_overestimates_more(self):
+        # With omega (up to 1.313 at the start) the full adaptive estimate overestimates
+        # by up to 58.5% (Eqs. 6-7 as printed) and 3.17x (V4: E+M without the 1/2).
+        from adaptive_astar.heuristics import hybrid_sum
+        s, t = (0, 0), (5, 5)
+        w = adaptive_weight(s, t)
+        self.assertAlmostEqual(w(s) * hybrid(s, t) / octile(s, t), 1.585, places=3)
+        self.assertAlmostEqual(w(s) * hybrid_sum(s, t) / octile(s, t), 3.170, places=3)
+
 
 class TestSearch(unittest.TestCase):
     def test_empty_grid_diagonal(self):
@@ -126,7 +135,14 @@ class TestBresenhamLineOfSight(unittest.TestCase):
 
 
 class TestDigitisedPaperMaps(unittest.TestCase):
-    """The digitised Fig. 5 maps reproduce the paper's published baseline numbers."""
+    """Regression tests of the digitised MAPS (and the inferred settings), not of the algorithm.
+
+    A* and Dijkstra are checked for correctness by the tests above. These tests pin
+    the digitised Fig. 5 maps, with corner cutting allowed, to the paper's published
+    baseline numbers, so that an accidental change to a map or a setting is caught.
+    The settings were chosen because they reproduce these numbers (calibration on
+    baseline statistics), so passing them is not independent evidence.
+    """
 
     @classmethod
     def setUpClass(cls):

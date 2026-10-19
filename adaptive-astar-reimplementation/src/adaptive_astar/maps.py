@@ -2,7 +2,7 @@
 
 The original obstacle matrices are not published (missing item M1), so the
 experiments use *proxy maps*: maps of the same size and scene type whose
-parameters are calibrated (``scripts/calibrate_maps.py``) so that Dijkstra and
+parameters are calibrated (``archive/calibrate_maps.py``) so that Dijkstra and
 A* reproduce the paper's published search statistics as closely as possible.
 
 * ``irregular``  - map1, 30 x 30, irregular outdoor scene (random blobs);
@@ -34,7 +34,7 @@ MAP_SIZES = {"map1": 30, "map2": 60, "map3": 100}
 #    Diagonal corner cutting is allowed and pruning uses a Bresenham line of sight: with
 #    these settings A* and Dijkstra reproduce the paper's published node counts.
 #  * "proxy": procedurally generated maps calibrated to the paper's statistics
-#    (scripts/calibrate_maps.py), with the conservative settings (no corner cutting,
+#    (archive/calibrate_maps.py), with the conservative settings (no corner cutting,
 #    supercover line of sight). Used before the figure was available, and for the
 #    random-map robustness study.
 MAP_SETS = {

@@ -61,7 +61,7 @@ Figures are in `figures/`.
 
 ### 5.2 Proxy maps and how closely they match
 
-`scripts/calibrate_maps.py` searched 12,000 / 6,000 / 2,400 seeded candidates for map1 / map2 / map3. It kept the candidate whose Dijkstra and A\* statistics were closest to the paper's. The proposed method is **never** used in calibration.
+`archive/calibrate_maps.py` searched 12,000 / 6,000 / 2,400 seeded candidates for map1 / map2 / map3. It kept the candidate whose Dijkstra and A\* statistics were closest to the paper's. The proposed method is **never** used in calibration.
 
 | Statistic (paper start/goal) | map1 30×30 paper | proxy | map2 60×60 paper | proxy | map3 100×100 paper | proxy |
 |---|---|---|---|---|---|---|

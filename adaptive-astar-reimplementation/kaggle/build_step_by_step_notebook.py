@@ -107,9 +107,9 @@ The paper gives only equations, a short description and result tables. **Everyth
 | 3 | Made and documented every decision the paper leaves open (17 missing details → explicit assumptions) | Parts 0 and 2 |
 | 4 | Wrote correctness tests | Part 3 |
 | 5 | **Digitised the paper's maps from its Fig. 5** (published only as a picture). Our baseline A\\* and Dijkstra on these maps reproduce the paper's node counts almost exactly, which also revealed two settings the paper never states | Part 4 |
-| 6 | **Audited the paper's published numbers** and found internal contradictions: e.g. several percentages in the text do not match its tables, two rows of Table 1 are swapped, and a Table 5 start cell is an obstacle in its own figure | Parts 5 and 6 |
+| 6 | **Audited the paper's published numbers** and found internal contradictions: e.g. several percentages in the text do not match its tables, two rows of Table 1 appear to be swapped, and a Table 5 start cell is an obstacle in its own figure | Parts 5 and 6 |
 | 7 | Reproduced every experiment of Tables 1–5 and compared each row with the paper | Parts 6 and 8 |
-| 8 | **Added experiments the paper does not have:** A\\* + pruning and octile baselines, a paired timing study, 150 random maps with Wilcoxon tests, and an optimality check. We also identified what the authors most likely ran: their published Adaptive A\\* numbers match the hybrid heuristic **without** the ½ of Eq. 7 | Parts 7, 9 and 10 |
+| 8 | **Added experiments the paper does not have:** A\\* + pruning and octile baselines, a paired timing study, 150 random maps with Wilcoxon tests, and an optimality check. We also tested a hypothesis about the authors' code: their published Adaptive A\\* numbers are *consistent with* the hybrid heuristic **without** the ½ of Eq. 7 ("V4"), which is evidence, not proof | Parts 7, 9 and 10 |
 | 9 | Critical analysis: comparable / improved / lower, with technical justification | Part 11 |
 
 ### Why does it run in a few minutes?
@@ -158,9 +158,9 @@ The paper reports, versus A\\*: 69% less time, 2.66 m shorter paths, and 38.1% f
 - *Baselines:* the Chen / Zhang methods; whether the ablation rows are isolated or cumulative.
 
 **We also found** (see Parts 2.2, 5.1, 6 and 10):
-- The hybrid heuristic **overestimates** the true 8-connected cost by up to 20.7%, so it is not admissible and optimality is lost. This is computed in Part 2.2.
+- The heuristic **overestimates** the true 8-connected cost, so it is not admissible and optimality is lost (computed in Part 2.2). The hybrid term alone overestimates by up to 20.7%. The full adaptive estimate ω·h overestimates by up to **58.5%**, and V4 (no ½) by up to **3.17×**.
 - The paper's own numbers contain contradictions. These are audited in Part 5.
-- The paper's published Adaptive A\\* numbers are reproduced only if the ½ of Eq. 7 is dropped in the full method (Part 10).
+- The paper's published Adaptive A\\* node counts are *consistent with* the ½ of Eq. 7 being dropped in the full method (Part 10). This is a hypothesis; our main results follow the equations as printed.
 """),
         md("## 1. Setup"),
         code("""
@@ -205,13 +205,13 @@ print("CPU:", platform.processor() or platform.machine(), "| cores:", __import__
 | D3 | Baseline heuristic | "Traditional" | Euclidean (admissible, so our A\\* baseline is optimal) |
 | D4 | d, D in Eq. 6 | Not stated | Euclidean distances |
 | D5 | Ties in OPEN | Not stated | Lower f, then lower h, then first-in-first-out (deterministic) |
-| D6 | Line of sight | Not stated | **Bresenham** raster line. Inferred: reproduces the paper's pruned path lengths (the stricter test is kept as an option) |
+| D6 | Line of sight | Not stated | **Bresenham** raster line, chosen because it reproduces the paper's pruned path lengths. This is calibration on pruning rows, i.e. on part of the proposed method, so the strict supercover test is reported too (Part 10.2) |
 | D7 | Pruning order | Ambiguous | Anchor-based three-node window (alternative tested in Part 10) |
 | D8 | Path length | Not stated | Euclidean length of the final polyline |
 | D9 | Timing | One value at 0.01 s resolution | Median of 30 runs, plus a paired study (Part 7) |
 | D10 | Chen / Zhang baselines | Not described | Compared on their published numbers only |
-| D11 | Table 5 start (4,24) | Obstacle in the paper's own figure | That single cell is freed for that experiment only |
-| D12 | Full method | Eqs. 5–7 | Main results use the equations **exactly as printed**. The variant without the ½ of Eq. 7 ("V4") is reported separately because it matches the published numbers |
+| D11 | Table 5 start (4,24) | Obstacle in the paper's own figure | That single cell is freed for that experiment only. Only this reproduces the paper's A\\* exactly (moving the start instead gives 224–249 nodes vs 250; Part 6.3) |
+| D12 | Full method | Eqs. 5–7 | Main results use the equations **exactly as printed**. The variant without the ½ of Eq. 7 ("V4") is reported separately, as a *hypothesis* about the authors' code, because it is consistent with the published node counts |
 
 ### 2.1 Environment model (paper Sec. 2.1)
 The workspace is a grid of 1 m × 1 m cells; black cells are obstacles. The robot moves in **8 directions** (straight cost 1, diagonal cost √2).
@@ -240,11 +240,17 @@ print(f"omega at the goal (d/D = 0): {w((10, 0)):.4f}   = ln 2")
 ratios = [hybrid((0, 0), (math.cos(t), math.sin(t))) / octile((0, 0), (math.cos(t), math.sin(t)))
           for t in np.linspace(0, math.pi / 2, 181)]
 print(f"max hybrid / true cost = {max(ratios):.4f}  (at 45 degrees) -> the hybrid heuristic is NOT admissible")
+# The search uses omega * h, and omega reaches ln(1+e) = 1.313 at the start (d = D):
+w_max = math.log1p(math.e)
+print(f"max omega * hybrid / true cost       = {w_max * max(ratios):.4f}  -> up to +{100 * (w_max * max(ratios) - 1):.1f}% (Eqs. 6-7 as printed)")
+print(f"max omega * (E + M) / true cost (V4) = {2 * w_max * max(ratios):.4f}  -> about 3x: V4 is close to greedy best-first search")
+print("(bounds for nodes no farther from the goal than the start; nodes behind the start get a larger omega)")
 """),
         md("""
 ### 2.3 Search algorithms: A\\* (Algorithm 1), Dijkstra, bidirectional A\\*
 - **A\\*:** an OPEN list (binary heap) and a CLOSED list (set). Nodes on CLOSED are never re-opened, and the search stops when the goal is popped, exactly as in the paper's Algorithm 1. The optional `weight` argument turns plain A\\* into the paper's adaptive A\\*.
 - **Dijkstra:** A\\* with h = 0.
+- **Bidirectional A\\*:** a *generic* version, because the paper does not describe its ref. [30]. A forward and a backward search alternate one expansion each and **stop at the first meeting**, i.e. when one side expands a node the other side has already closed. This rule is **not guaranteed to give the shortest path**; an optimal version would continue until min f_forward + min f_backward ≥ the best meeting cost. The paper's bidirectional paths are 1.6–2.2 m longer than its A\\*, which fits such a rule.
 """),
         code(module("search")),
         md("""
@@ -300,6 +306,8 @@ The paper publishes its three maps **only as a picture** (Fig. 5). We converted 
 | 100×100 (array) | ≈ 1.49 | Too fine for per-cell sampling, so each dark block (all 5×5 cells) is detected as a whole. Block groups were then refined by ±1 cell, using **only baseline** statistics |
 
 **Validation (next cells).** On these maps our *baseline* A\\* and Dijkstra reproduce the paper's published numbers almost exactly. For example: A\\* 130 vs 130 nodes, 715 vs 716, and 2188 vs 2191; Dijkstra 633 vs 632, 1741 vs 1740, and 7521 vs 7520. The Table 5 pair (4,24)→(29,2) gives 38.21 m / 250 nodes / 14 corners, identical to the paper.
+
+*Honest note:* maps 1 and 2 were not tuned, so their agreement is a real check. Map 3's block positions and the corner-cutting setting were **chosen to fit these baseline numbers** (calibration, Part 10.2), so for them the agreement is partly built in.
 
 This also **resolves two settings the paper never states:**
 - Diagonal moves may cut obstacle corners. Without corner cutting the node counts do not match.
@@ -427,7 +435,7 @@ if fig5 is not None:
     plt.figure(figsize=(9, 3.5)); plt.imshow(fig5); plt.axis("off"); plt.title("Paper Fig. 5 (input of the digitiser)"); plt.show()
 """),
         code(f"""
-# Generator parameters for the random maps of Part 9 (calibrated earlier; see scripts/calibrate_maps.py)
+# Generator parameters for the random maps of Part 9 (calibrated earlier; see archive/calibrate_maps.py)
 CALIBRATION = {json.dumps(calib, indent=4)}
 """),
         md("## 5. The paper's published results (Tables 1–5)"),
@@ -569,11 +577,14 @@ ALL_RESULTS.append(experiment("T1", "30x30", (2, 2), (28, 28), ABLATION))
 ALL_RESULTS.append(experiment("T1", "60x60", (2, 2), (58, 58), ABLATION))
 """),
         md("""
-**Observation — two rows of the paper's Table 1 (60×60) appear to be swapped.**
+**Observation — two rows of the paper's Table 1 (60×60) appear to be swapped, and its pruning row is not isolated.**
 
 On 30×30 our isolated components match the paper almost exactly: adaptive weight 119 vs 118 nodes, and hybrid distance 46 vs 45 nodes with 41.46 vs 41.45 m.
 
-On 60×60, however, our *adaptive-weight* row matches the paper's *distance-model* row, and vice versa:
+On 60×60, however, three pieces of evidence point to a problem in the paper's table:
+1. **Node counts.** Our *adaptive-weight* run matches the paper's *distance-model* row, and vice versa (table below). The same code matches both rows on 30×30.
+2. **Theory.** ω is below 1 for nodes with d < 0.54·D and above 1 elsewhere, so the adaptive weight alone changes the search only a little. The paper's own 30×30 row shows −9%, so −42.5% on 60×60 is implausible.
+3. **The pruning row copies another row.** Pruning is post-processing and cannot change the node count, so an isolated pruning row must show A\\*'s count. On 30×30 it does (130 = A\\*). On 60×60 it repeats the 691-node row exactly, in nodes and time (691, 0.12 s), instead of A\\*'s 716. This suggests the pruning was applied on top of another change on 60×60 (cumulative) but alone on 30×30 (isolated).
 """),
         code("""
 t1 = pd.concat(ALL_RESULTS)
@@ -622,7 +633,20 @@ for size, goal in (("30x30", (28, 28)), ("60x60", (58, 58)), ("100x100", (99, 99
     fig.suptitle(f"Algorithms on the {size} map (cf. paper Figs. 8-10)", color=INK2)
     plt.show()
 """),
-        md("### 6.3 Table 5 — Different start and end points"),
+        md("""
+### 6.3 Table 5 — Different start and end points
+The 30×30 start (4,24) is an **obstacle in the paper's own Fig. 5**: the cell is solid black in the figure. The paper still reports a path from it. Our code **frees that single cell for this experiment only** (`free_start`); every planner uses the same modified map. The next cell shows why we free it instead of moving the start or skipping the case.
+"""),
+        code("""
+g30, goal = MAPS["30x30"], from_paper(29, 2)
+print("Is (4,24) free in the digitised Fig. 5?", g30.is_free(*from_paper(4, 24)))
+print("Paper, A* from (4,24): 38.21 m / 250 nodes / 14 corners")
+for label, start in (("free the cell (ours)", (4, 24)), ("move start to (3,24)", (3, 24)),
+                     ("move start to (5,24)", (5, 24)), ("move start to (4,23)", (4, 23))):
+    res = PLANNERS["A*"].plan(free_start(g30, from_paper(*start)), from_paper(*start), goal)
+    print(f"  {label:22s}: {res.length:.2f} m / {res.expanded} nodes / {res.corners} corners")
+print("Only freeing the cell reproduces the paper exactly, which suggests the authors' planner treated it as free.")
+"""),
         code("""
 for size, start, goal in (("30x30", (28, 28), (2, 2)), ("30x30", (4, 24), (29, 2)),
                           ("60x60", (58, 58), (2, 2)), ("60x60", (4, 54), (59, 2))):
@@ -804,9 +828,9 @@ fig.suptitle("Change relative to A* on random maps (negative = better)", color=I
 plt.show()
 """),
         md("""
-## 10. What did the authors actually run? (sensitivity analysis)
+## 10. A hypothesis: what did the authors' code run? (sensitivity analysis)
 
-Our implementation follows Eqs. 5–7 **exactly as printed**. On the digitised maps, the baselines and each improvement *alone* reproduce the paper almost exactly (Parts 4 and 6.1). The **full** Adaptive A\\* is the exception: it expands clearly more nodes than published.
+This part is **not our main result**. Our main results (Parts 6–9) follow Eqs. 5–7 **exactly as printed**. On the digitised maps, the baselines and each improvement *alone* reproduce the paper almost exactly (Parts 4 and 6.1). The **full** Adaptive A\\* is the exception: it expands clearly more nodes than published.
 
 The table tests the two remaining ambiguities on every published Adaptive A\\* case:
 - **(i) Pruning order:** anchor-based vs single-pass three-node window.
@@ -850,7 +874,9 @@ display(pd.DataFrame(rows).set_index("metric"))
 """),
         md("""
 **Reading the table:**
-- **Expanded nodes.** With V4 they match the published Adaptive A\\* closely on every case (e.g. 40 vs 36, 261 vs 268, 114 vs 113, 35 vs 33). With the equations as printed they do not (66, 370, 448, 93). So the authors' full method most likely used E+M without the ½, even though Eq. 7 and their isolated distance-model row both use the ½.
+- **Expanded nodes.** With V4 they match the published Adaptive A\\* closely on every case (e.g. 40 vs 36, 261 vs 268, 114 vs 113, 35 vs 33). With the equations as printed they do not (66, 370, 448, 93). The published numbers are therefore *consistent with* the authors' full method using E+M without the ½, even though Eq. 7 and their isolated distance-model row both use the ½.
+- **Why this is a hypothesis, not proof.** ω·(E+M) equals 2·ω·hybrid, so a missing ½ cannot be told apart from an extra weight of 2. Undocumented details such as tie-breaking could also contribute, and we do not have the authors' code.
+- **Why V4 expands so few nodes.** It overestimates the true cost by up to 3.17× (Part 2.2), so it behaves almost like greedy best-first search.
 - **Path lengths.** They are close to the paper with both readings.
 - **Corners.** The paper's counts sit between the anchor and single-pass pruning readings, and no single reading reproduces all of them. The pruning step is under-specified.
 """),
@@ -859,18 +885,18 @@ display(pd.DataFrame(rows).set_index("metric"))
 
 The paper's Figs. 8 and 9 shade every expanded cell grey. Classifying each cell of those panels (repository script `scripts/compare_paper_figures.py`) gives:
 
-| Paper panel | Our planner | Our nodes | Paper-explored cells we also expand | Cells we expand that the paper did **not** |
+| Paper panel | Our planner | Our nodes | Paper-explored cells we also expand | Wrongly expanded: cells we expand that are **white (never explored)** in the paper's figure |
 |---|---|---|---|---|
 | Fig. 8(a) 30×30 | A\\* | 130 | 99/99 (100%) | **0** |
 | Fig. 8(b) 30×30 | Dijkstra | 633 | 600/600 (100%) | **0** |
-| Fig. 8(f) 30×30 | Adaptive A\\*, Eqs. as printed | 66 | 12/18 | 29 |
-| Fig. 8(f) 30×30 | Adaptive A\\*, **V4** | 40 | 13/18 | **2** |
+| Fig. 8(f) 30×30 | Adaptive A\\*, Eqs. as printed (main) | 66 | 12/18 | 29 |
+| Fig. 8(f) 30×30 | Adaptive A\\*, V4 (hypothesis) | 40 | 13/18 | 2 |
 | Fig. 9(a) 60×60 | A\\* | 715 | (grid lines blur the shading) | **0** |
-| Fig. 9(f) 60×60 | Adaptive A\\*, Eqs. as printed | 370 | (grid lines blur the shading) | 122 |
-| Fig. 9(f) 60×60 | Adaptive A\\*, **V4** | 261 | (grid lines blur the shading) | **2** |
+| Fig. 9(f) 60×60 | Adaptive A\\*, Eqs. as printed (main) | 370 | (grid lines blur the shading) | 122 |
+| Fig. 9(f) 60×60 | Adaptive A\\*, V4 (hypothesis) | 261 | (grid lines blur the shading) | 2 |
 
 - A\\* and Dijkstra reproduce the paper's shaded regions cell for cell.
-- For Adaptive A\\*, only V4 stays inside the paper's explored region.
+- With the equations as printed, our Adaptive A\\* searches 29 (30×30) and 122 (60×60) cells that the authors' planner never explored. V4 searches only 2 such cells on each map. This is consistent with the V4 hypothesis, but it is not proof.
 
 The figure below (downloaded from the repository if Internet is on) puts the paper's panels next to ours.
 """),
@@ -887,48 +913,89 @@ except Exception as exc:
     print("Comparison figure not downloaded (no Internet?):", type(exc).__name__)
 """),
         md("""
+### 10.2 Calibration disclosure and line-of-sight sensitivity
+
+Some settings were chosen **because they made our numbers match the paper's**, which is calibration:
+
+| Choice | Matched to | Uses the proposed method's numbers? |
+|---|---|---|
+| Corner cutting allowed | A\\* and Dijkstra node counts | No |
+| Euclidean baseline heuristic | A\\* node counts | No |
+| Map 3 block positions (±1 cell, 2 of 8 groups) | Table 4 Dijkstra nodes and length, A\\* nodes | No |
+| Bresenham line of sight | pruned lengths (Table 1 pruning rows, full method on 100×100) | **Yes**, so the strict supercover alternative is shown below |
+| Table 5 start (4,24) freed | Table 5 A\\* row | No |
+
+Consequences:
+- The **Adaptive A\\* node counts were never used for calibration**. Expanded nodes do not depend on the line-of-sight test.
+- The paper-map validation of Part 4 (e.g. "A\\* expands 130 nodes") and the matching repository unit tests are therefore **map-regression checks**: they check the maps and settings, not the algorithm. The algorithm itself is checked on synthetic grids in Part 3.
+"""),
+        code("""
+# Metrics 2 and 4 under both line-of-sight tests (Adaptive A* as printed vs A*, Tables 2-4)
+rows = []
+for los in ("bresenham", "supercover"):
+    dl, dc = [], []
+    for size, goal in (("30x30", (28, 28)), ("60x60", (58, 58)), ("100x100", (99, 99))):
+        s, t = from_paper(2, 2), from_paper(*goal)
+        a = PLANNERS["A*"].plan(MAPS[size], s, t)
+        b = replace(PLANNERS["Adaptive A*"], los=los).plan(MAPS[size], s, t)
+        dl.append(a.length - b.length); dc.append(100 * (a.corners - b.corners) / a.corners)
+    rows.append({"line of sight": los + (" (main)" if los == LOS else ""),
+                 "length reduction (m) 30/60/100": " / ".join(f"{v:.2f}" for v in dl), "mean (m)": round(np.mean(dl), 2),
+                 "corner reduction (%) 30/60/100": " / ".join(f"{v:.1f}" for v in dc), "mean (%)": round(np.mean(dc), 1)})
+rows.append({"line of sight": "paper", "length reduction (m) 30/60/100": "0.69 / 1.41 / 5.89", "mean (m)": 2.66,
+             "corner reduction (%) 30/60/100": "22.2 / 33.3 / 58.8", "mean (%)": 38.1})
+display(pd.DataFrame(rows).set_index("line of sight"))
+"""),
+        md("""
 ## 11. Critical analysis (assignment Section 6)
 
-**What reproduces exactly.** On the digitised maps, every *baseline* number of the paper is reproduced almost exactly:
-- A\\* nodes: 130 vs 130, 715 vs 716, 2188 vs 2191.
-- Dijkstra nodes: 633 vs 632, 1741 vs 1740, 7521 vs 7520.
-- Table 5 random pair: 38.21 m / 250 nodes / 14 corners, identical to the paper.
-- Each improvement *alone*: adaptive weight 119 vs 118 nodes; hybrid distance 46 vs 45 nodes and 41.46 vs 41.45 m.
+A higher or lower number alone does not settle a verdict, so we judge each claim separately. Main results = Eqs. 5–7 **as printed**.
 
-This confirms that the maps, the motion model and our implementation of every building block are faithful.
+| Claim | Verdict | Why |
+|---|---|---|
+| A\\* and Dijkstra baselines | **Comparable** | Within 1–5 nodes; the Table 5 pair is identical in every metric. Part of this agreement is by calibration (Part 10.2) |
+| Each improvement alone (Table 1) | **Comparable** | 119 vs 118 and 46 vs 45 nodes, 41.46 vs 41.45 m; on 60×60 after the apparent row swap (Part 6.1) |
+| Full Adaptive A\\* as printed | **Partly comparable** | Faster, fewer nodes, shorter and smoother paths than A\\* on every map, as claimed. But the size differs: nodes −59% vs −77%, time −40% vs −69%. The node gap is consistent with the V4 hypothesis (Part 10) |
+| "The improved heuristic gives shorter / near-optimal paths" | **Not supported** | The full estimate overestimates by up to 58.5%, so the raw path is suboptimal on 90 of 150 random maps. A\\* + pruning is as short or shorter on 110 of 150 (Part 9). The length and smoothness gains come from **pruning**; the heuristic buys **speed** |
 
-**The full method, verdict per metric.** Values are the mean over Tables 2–4, Adaptive A\\* vs A\\*; Part 8 shows the as-printed numbers and Part 10 the V4 numbers.
+**Per assignment metric** (mean over Tables 2–4, Adaptive A\\* as printed vs A\\*):
 
-| Metric | Published | Ours, Eqs. 5–7 as printed | Ours, V4 (E+M, no ½) | Verdict |
-|---|---|---|---|---|
-| Expanded nodes | −76.6% | ≈ −59% | ≈ −76% | **(C)** as printed; **(A)** with V4 |
-| Path length | −2.66 m | ≈ −3.7 m | ≈ −2.9 m | **(A)** comparable; slightly better, caused by the pruning reading |
-| Planning time | −68.7% | ≈ −40% (paired) | ≈ −59% | **(C)** lower, mostly a Python vs MATLAB effect |
-| Corners ≥ 45° | −38.1% | ≈ −67% | ≈ −63% | **(B)** numerically, but from the pruning reading, not a better method |
+| Metric | Published | Ours (as printed) | Category |
+|---|---|---|---|
+| 1 Planning time | −68.7% | ≈ −40% (paired) | **(C) lower**: bounded by the node reduction, plus Python overhead; on 100×100 ours is higher (≈ 72% vs 64%) |
+| 2 Path length | −2.66 m | −3.70 m (Bresenham), −1.29 m (supercover) | **(B)** or **(C)** depending on the line-of-sight test (Part 10.2); same sign |
+| 3 Expanded nodes | −76.6% | ≈ −59% | **(C) lower**; ≈ −76% under the V4 hypothesis |
+| 4 Corners ≥ 45° | −38.1% | −67.4% (Bresenham), −40.0% (supercover) | **(B)** or **(A)** depending on the line-of-sight test |
 
-**Overall: (A) comparable.** The paper's results are reproducible on its own maps, with one important qualification: the published Adaptive A\\* numbers correspond to E+M **without** the ½ of Eq. 7. This is confirmed independently by the node counts (Part 10) and by the explored regions drawn in the paper's Figs. 8 and 9 (Part 10.1). With the equations exactly as printed, the method is less greedy and saves fewer nodes.
+**Overall: partly reproduced.**
+- The baselines and each improvement are comparable.
+- The full method's advantages hold in direction but not in size when Eq. 7 is followed as printed.
+- The claim that the heuristic itself shortens paths is not supported.
 
 **Technical justification of the remaining differences:**
-- **Dataset.** We use our digitisation of Fig. 5, validated by the exact baseline matches. One start cell is an obstacle in the paper's own figure, so we free that cell for that experiment.
-- **Settings and parameters.** The paper never states that corner cutting is allowed or which line-of-sight test it uses. Both were inferred from the published numbers. The pruning order is still ambiguous: our corner counts differ from the paper with either reading (Part 10).
+- **Dataset.** We use our digitisation of Fig. 5, with Map 3 calibrated on baseline statistics. One start cell is an obstacle in the paper's own figure; we free that cell for that experiment (Part 6.3).
+- **Settings and parameters.** The paper never states that corner cutting is allowed or which line-of-sight test it uses. Both were inferred by matching published numbers, which we disclose as calibration (Part 10.2). The pruning order is still ambiguous: our corner counts differ from the paper with either reading (Part 10).
 - **Randomness.** Length, nodes and corners are deterministic and exactly repeatable. Time is the only noisy metric, so we report medians and a paired study with confidence intervals. Robustness is tested on 150 random maps with Wilcoxon tests.
-- **Software and hardware.** MATLAB on an i5 laptop vs Python on a cloud CPU. On small maps Python's per-node overhead (computing ω) and the pruning step hide most of the saving: 30×30 runs in under 1 ms. On 100×100 our reduction (≈ 72%) exceeds the paper's 64%. The paper's 0.01 s timer resolution adds ±16 pp of uncertainty to its own percentages.
-- **Missing details.** See Q7. In addition, the paper's text contradicts its tables in several places, and two Table 1 rows (60×60) are swapped (Parts 5.1 and 6.1).
+- **Software and hardware.** MATLAB on an i5 laptop vs Python on a cloud CPU. On small maps, Python's per-node overhead (computing ω) and the pruning step hide most of the saving. The paper's 0.01 s timer resolution adds ±16 pp of uncertainty to its own percentages.
+- **Missing details.** See Q7. In addition:
+  - the paper's text contradicts its tables in several places;
+  - two Table 1 rows (60×60) appear swapped, and its pruning row is cumulative there (Parts 5.1 and 6.1);
+  - the bidirectional A\\* of ref. [30] is not described, so ours is a generic first-meeting version.
 - **Our deviations.** D1–D12 apply identically to every planner, and none favours the proposed method.
 
 **What our reproduction adds beyond the paper:**
-1. **The adaptive search is not optimal.** Its heuristic is inadmissible (it overestimates by up to 20.7%), and on random maps the raw Adaptive A\\* path is longer than optimal on many maps (Part 9).
-2. **The length and smoothness gains come mostly from the pruning step.** A\\* + pruning alone is usually as short or shorter (Part 9); the paper's own Table 1 shows the same. The real benefit of the adaptive heuristic is **speed**.
+1. **The adaptive search is not optimal.** The full estimate overestimates the true cost by up to 58.5% as printed (3.17× under V4). On random maps, the raw Adaptive A\\* path is longer than optimal on 90 of 150 maps (Part 9).
+2. **The length and smoothness gains come mostly from the pruning step.** A\\* + pruning alone is usually as short or shorter (Part 9), and the paper's own Table 1 shows the same. The real benefit of the adaptive heuristic is **speed**.
 3. **On published numbers alone**, Adaptive A\\* improves on A\\* more than Chen et al. and Zhang et al. do, so the paper's ranking holds.
 
 ## 12. Limitations and conclusion
 **Limitations:**
-- The maps are digitised from a 753×337 px screenshot. Maps 1 and 2 are cell-accurate (validated); map 3's block groups were placed using baseline statistics.
-- Chen et al. and Zhang et al. were not re-implemented.
+- The maps are digitised from a 753×337 px screenshot. Maps 1 and 2 were not tuned. Map 3's block groups and two settings were calibrated (Part 10.2). Map 2 has not yet been cross-checked against the paper's high-resolution Fig. 7.
+- Chen et al. and Zhang et al. were not re-implemented. Bidirectional A\\* is a generic version, not ref. [30].
 - Python timing is not directly comparable with MATLAB timing.
 - Static grids only, as in the paper.
 
-**Conclusion.** Re-implemented independently and run on the paper's own (digitised) maps, the baselines and each improvement reproduce the published numbers almost exactly. The full Adaptive A\\* reproduces the paper's claims (fewer nodes, faster on larger maps, shorter and smoother paths), and its published node counts are matched once the hybrid heuristic is used without the ½ of Eq. 7. Our additional experiments show that the adaptive heuristic trades optimality for speed, and that the redundant point deletion provides most of the path-quality improvement.
+**Conclusion.** Re-implemented independently and run on the paper's own (digitised) maps, the baselines and each improvement match the published numbers closely. The full Adaptive A\\*, implemented exactly as printed, is faster than A\\*, expands fewer nodes, and gives shorter and smoother paths, as claimed. Its gains are smaller than published, however. The published node counts are consistent with the hybrid heuristic being used without the ½ of Eq. 7, which is a hypothesis we cannot prove. Our additional experiments show that the adaptive heuristic trades optimality for speed, and that redundant point deletion provides most of the path-quality improvement.
 """),
     ]
     for i, cell in enumerate(cells):

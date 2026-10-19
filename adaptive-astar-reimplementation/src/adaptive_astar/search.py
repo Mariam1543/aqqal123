@@ -105,6 +105,11 @@ def bidirectional_astar(grid: GridMap, start: Cell, goal: Cell,
     until the optimal-termination bound is met) is the textbook simple variant;
     it is fast but may return a slightly longer path, matching the paper's
     observation that BA* paths are longer.
+
+    An optimal bidirectional search would keep the best meeting cost mu seen so
+    far and stop only when min f_forward + min f_backward >= mu (or a similar
+    bound). The paper does not describe the method of its ref. [30], so this is
+    a standard generic version, not a re-implementation of [30].
     """
     if not (grid.is_free(*start) and grid.is_free(*goal)):
         return SearchResult([], float("inf"), 0, 0)

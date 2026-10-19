@@ -74,7 +74,7 @@ SETTINGS = {"map_set": "proxy", "los": "supercover", "corner_cutting": False}
 def load_maps(map_set: str) -> dict[str, GridMap]:
     for stem in MAP_SETS[map_set]["files"].values():
         if not (ROOT / "maps" / f"{stem}.csv").exists():
-            sys.exit(f"maps/{stem}.csv missing - run scripts/calibrate_maps.py or scripts/digitize_figure5.py")
+            sys.exit(f"maps/{stem}.csv missing - run archive/calibrate_maps.py or scripts/digitize_figure5.py")
     return load_map_set(map_set, ROOT / "maps")
 
 

@@ -14,7 +14,7 @@ published values in Tables 2-5:
 The error is a weighted sum of absolute log-ratios. Output: ``maps/map{1,2,3}.csv``
 and ``maps/calibration.json`` (parameters, seed, achieved vs. target values).
 
-Usage:  python scripts/calibrate_maps.py [--budget-scale 1.0] [--workers 4]
+Usage:  python archive/calibrate_maps.py [--budget-scale 1.0] [--workers 4]
 """
 
 from __future__ import annotations
