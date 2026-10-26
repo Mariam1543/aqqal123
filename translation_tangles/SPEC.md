@@ -2,7 +2,10 @@
 
 Source: Sayeedi et al., *Ready to Translate, Not to Represent? Bias and Performance Gaps
 in Multilingual LLMs Across Language Families and Domains*, Findings of ACL 2026,
-pp. 1367–1391. Official code/data (per the paper): github.com/faiyazabdullah/TranslationTangles
+pp. 1367–1391. The paper links github.com/faiyazabdullah/TranslationTangles, but it returns 404,
+so this reproduction is built from the paper text alone.
+
+**Out of scope:** the human evaluation (Sec. 6, Table 4) and the dataset release.
 
 Everything below is taken from the paper. Items marked **[OPEN]** are not stated in the
 paper and need a decision (or the official repo).
@@ -174,12 +177,7 @@ Example response:
 
 Agreement (Eq. 6): Σ_b |H_b ∩ L_b| / Σ_b |H_b| × 100.
 
-## 8. Human evaluation (Sec. 6) — not reproducible without annotators
-
-1,439 pairs = 851 agreement + 294 disagreement + 294 undetected, two annotators plus an
-adjudicator. Table 4 needs those labels; use the released dataset if available.
-
-## 9. Targets to reproduce
+## 8. Targets to reproduce
 
 | Item | Paper value |
 |---|---|
@@ -188,5 +186,4 @@ adjudicator. Table 4 needs those labels; use the released dataset if available.
 | Table 3 | 1,902 flagged; 928 confirmed; 48.79% agreement |
 | Fig. 3 | knee at τ = 0.75 |
 | Fig. 4 | bias by model × type, by pair × type |
-| Table 4 | heuristic P≈27.3%, R=100%; judge P≈35.1%, R≈95.5% |
 | Figs. 7–25 | per-direction metric tables |
