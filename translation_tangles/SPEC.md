@@ -209,3 +209,16 @@ Agreement (Eq. 6): Σ_b |H_b ∩ L_b| / Σ_b |H_b| × 100.
   allam-2-7b and audio/guard models), so the >30B models need another provider.
 - Gemini key works: `gemini-embedding-001` returns 3072-dim vectors; `gemini-2.5-flash`
   is available for the judge.
+- BanglaNMT, ELRC-Medical-V2 and MultiEURLEX all load with `datasets==3.6.0` +
+  `trust_remote_code=True` (BanglaNMT test 1,000; ELRC en-fr 13,149 train only;
+  MultiEURLEX test 5,000 documents, `text` is a dict keyed by language).
+
+## 10. Data decisions (`notebooks/01_prepare_data.ipynb`)
+
+- 500 pairs per direction, seed 42; both directions of a pair share the same 500 pairs.
+- General: WMT19 validation; et-en, tr-en from WMT18 test; bn-en from BanglaNMT test.
+- Literature: both stored orientations pooled per language pair; no `Similarity` filter.
+- Medical: ELRC train split is the pool (no splits exist).
+- Law: MultiEURLEX test documents split on newlines and paired line by line only when
+  English and target have the same line count; drop identical lines and English lines
+  shorter than 4 or longer than 120 words. The paper does not say how it segmented.
