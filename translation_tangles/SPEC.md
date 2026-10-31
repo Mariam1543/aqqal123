@@ -187,3 +187,23 @@ Agreement (Eq. 6): Σ_b |H_b ∩ L_b| / Σ_b |H_b| × 100.
 | Fig. 3 | knee at τ = 0.75 |
 | Fig. 4 | bias by model × type, by pair × type |
 | Figs. 7–25 | per-direction metric tables |
+
+## 9. Setup findings (Kaggle, 31 Oct)
+
+- Kaggle: 2× Tesla T4 (14.6 GB each), Python 3.13, `datasets` 4.8.5.
+- All 13 HF models used on Kaggle are accessible (gated licences accepted).
+- Load fine with `datasets` 4.x (column `translation`, a dict keyed by language code):
+
+  | Source | Split | Rows |
+  |---|---|---|
+  | wmt19 cs-en / de-en / fi-en / ru-en | validation | 2983 / 2998 / 3000 / 3000 |
+  | wmt19 gu-en / kk-en / lt-en | validation | 1998 / 2066 / 2000 |
+  | wmt19 zh-en / fr-de | validation | 3981 / 1512 |
+  | wmt18 et-en / tr-en | test | 2000 / 3000 |
+
+- Lit-Corpus loads; columns `Language_pair` (e.g. `kaz_to_rus`), `X`, `y`, `X_lang`,
+  `y_lang`, `Similarity`; single `train` split.
+- BanglaNMT, ELRC-Medical-V2 and MultiEURLEX are script-based and fail on `datasets` 4.x;
+  probed in `notebooks/00b_probe_script_datasets.ipynb`.
+- Groq no longer serves any model from the paper (only gpt-oss-20b/120b, qwen3 27B,
+  allam-2-7b and audio/guard models), so the >30B models need another provider.
