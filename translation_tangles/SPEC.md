@@ -207,3 +207,5 @@ Agreement (Eq. 6): Σ_b |H_b ∩ L_b| / Σ_b |H_b| × 100.
   probed in `notebooks/00b_probe_script_datasets.ipynb`.
 - Groq no longer serves any model from the paper (only gpt-oss-20b/120b, qwen3 27B,
   allam-2-7b and audio/guard models), so the >30B models need another provider.
+- Gemini key works: `gemini-embedding-001` returns 3072-dim vectors; `gemini-2.5-flash`
+  is available for the judge.
