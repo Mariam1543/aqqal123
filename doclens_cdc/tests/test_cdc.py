@@ -451,3 +451,36 @@ def test_reproduction_report_against_paper(tmp_path):
     assert "| `pro_doclens` | ours |" in text and "| | paper |" in text
     assert "-0.9" in text and "+27.8" in text and "-2.5" in text  # ALL 66.7-67.6, UNA 100-72.2, Pages 1.0-3.5
     assert "1 failed" in text and "Per-domain accuracy" in text
+
+
+def test_api_failures_are_retried_not_scored_wrong():
+    from cdc.processor import api_failure
+
+    assert api_failure({"final_prediction": "42", "pgnav_cand1_response": '{"x": 1}'}) is None
+    assert "final_prediction" in api_failure({"final_prediction": "Error"})
+    assert api_failure({"pgnav_cand3_response": "Error"})
+    assert api_failure({"final_score_error": "IndexError"})
+
+
+def test_prepare_subset_random_sample(tmp_path):
+    pymupdf = pytest.importorskip("pymupdf")
+    docs = tmp_path / "docs"
+    docs.mkdir()
+    samples = []
+    for d in range(4):
+        pdf = pymupdf.open()
+        pdf.new_page()
+        pdf.save(docs / f"d{d}.pdf")
+        samples += [{"doc_id": f"d{d}.pdf", "question": f"q{d}-{i}"} for i in range(5)]
+    (tmp_path / "s.json").write_text(json.dumps(samples))
+    out = tmp_path / "out"
+    cmd = [sys.executable, str(PKG_ROOT / "scripts/prepare_subset.py"), "--all", "--samples", str(tmp_path / "s.json"),
+           "--documents", str(docs), "--out_root", str(out), "--sample_questions", "6", "--workers", "1"]
+    subprocess.run(cmd, check=True, capture_output=True)
+    picked = json.loads((out / "samples_subset.json").read_text())
+    assert len(picked) == 6
+    assert [s["question"] for s in picked] == [s["question"] for s in samples if s in picked]  # original order
+    rendered = {p.name for p in (out / "clean/data/MMLongBenchDoc/documents").iterdir()}
+    assert rendered == {s["doc_id"][:-4] for s in picked}
+    subprocess.run(cmd, check=True, capture_output=True)  # same seed -> same sample
+    assert json.loads((out / "samples_subset.json").read_text()) == picked

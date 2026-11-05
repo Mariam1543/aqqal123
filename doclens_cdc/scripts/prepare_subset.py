@@ -48,6 +48,9 @@ def main():
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--all", action="store_true",
                    help="Full benchmark: every question whose PDF exists, original order (for reproduction)")
+    p.add_argument("--sample_questions", type=int, default=0,
+                   help="With --all: a seeded random sample of this many questions (like the paper's "
+                        "200-question evaluations in Appendix C); only their documents are rendered")
     p.add_argument("--workers", type=int, default=4)
     args = p.parse_args()
 
@@ -73,6 +76,11 @@ def main():
         missing = sorted(set(by_doc) - set(page_counts))
         if missing:
             print(f"WARNING: {len(missing)} documents have no readable PDF; their questions are skipped: {missing[:5]}")
+        if args.sample_questions and args.sample_questions < len(subset):
+            picked = set(random.Random(args.seed).sample(range(len(subset)), args.sample_questions))
+            subset = [q for i, q in enumerate(subset) if i in picked]  # keeps the benchmark's order
+            needed = {q["doc_id"] for q in subset}
+            chosen = [d for d in chosen if d in needed]
     else:
         eligible = [d for d, n in page_counts.items() if n <= args.max_pages]
         rnd = random.Random(args.seed)

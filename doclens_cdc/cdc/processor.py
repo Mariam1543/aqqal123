@@ -86,6 +86,19 @@ def _user_prompt(question: str) -> str:
     return f"""\n\n**Question**: {question}\n\n**Your Output**:"""
 
 
+def api_failure(record: dict) -> Optional[str]:
+    """DocLens' Gemini wrapper returns the literal answer "Error" after its retries fail (rate limit,
+    daily quota, outage), and its scorer then raises. Such a question would silently count as wrong,
+    so it is marked failed instead and retried on the next run."""
+    failed = [k for k, v in record.items()
+              if (k.endswith("_prediction") or k.endswith("_response")) and str(v).strip() == "Error"]
+    failed += [k for k in record if k.endswith("score_error")]
+    if failed:
+        return ("API call failed (rate limit / daily quota?) for " + ", ".join(sorted(failed)[:5])
+                + ". Re-run the same command later to retry this question.")
+    return None
+
+
 class CDCDocLensProcessor(DocLensProcessor):
     def __init__(
         self,
@@ -442,10 +455,14 @@ class CDCDocLensProcessor(DocLensProcessor):
         async def run(doc):
             async with semaphore:
                 try:
-                    return await self.process_single_document(doc)
+                    res = await self.process_single_document(doc)
                 except Exception as e:
                     doc["cdc_error"] = f"{e!r}\n{traceback.format_exc()}"
                     return doc
+                problem = api_failure(res)
+                if problem:
+                    res["cdc_error"] = problem
+                return res
 
         tasks = [asyncio.create_task(run(d)) for d in todo]
         with tqdm(total=len(tasks), desc=f"DocLens[{self.mode}]") as pbar:
