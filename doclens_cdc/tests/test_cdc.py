@@ -258,6 +258,8 @@ def test_analyze_and_doclens_modes_and_batch_resume(tmp_path, monkeypatch):
     r = res[0]
     for prefix in ("final_", "abstain_", "correct_", "doclens_", "doclens_first_", "correct_first_", "lens_"):
         assert r[f"{prefix}score"] == 1.0, prefix
+    # every sampled candidate's answer and reasoning is kept (needed to study over-refinement)
+    assert r["doclens_cand2_prediction"] == "42" and r["doclens_cand2_analysis"] == "read the table"
     n_calls = len(calls)
     asyncio.run(proc.process_documents_batch([_sample()], max_concurrent=2))
     assert len(calls) == n_calls  # resumed from the JSONL, nothing recomputed

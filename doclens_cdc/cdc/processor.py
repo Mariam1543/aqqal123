@@ -307,6 +307,7 @@ class CDCDocLensProcessor(DocLensProcessor):
         if res.candidates:
             for i, c in enumerate(res.candidates, 1):
                 data[f"{prefix}cand{i}_prediction"] = c["prediction"]
+                data[f"{prefix}cand{i}_analysis"] = c["analysis"]
             # first sampled candidate = the answer before any verification/adjudication
             data[f"{prefix}first_prediction"] = res.candidates[0]["prediction"]
 
