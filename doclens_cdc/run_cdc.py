@@ -45,6 +45,13 @@ def parse_args():
                    help="Use Vertex AI like the original DocLens (needs GOOGLE_CLOUD_PROJECT and "
                         "GOOGLE_APPLICATION_CREDENTIALS) instead of an API key")
     g.add_argument("--rpm", type=float, default=0, help="Max Gemini requests per minute (0 = unlimited)")
+    g.add_argument("--qwen_base_url", default=None,
+                   help="Use a local OpenAI-compatible server (vLLM) serving Qwen3-VL-8B-Instruct, e.g. "
+                        "http://localhost:8000/v1; model names must then start with 'qwen'")
+    g.add_argument("--qwen_max_tokens", type=int, default=4096, help="Output-token cap per Qwen request")
+    g.add_argument("--qwen_max_images", type=int, default=64, help="Images per request the server accepts")
+    g.add_argument("--nav_chunk_pages", type=int, default=30,
+                   help="With --qwen_base_url: Page Navigator chunk size in pages (paper: 50 for Claude)")
     g.add_argument("--max_concurrent", type=int, default=4)
     g.add_argument("--single_candidate_calls", action="store_true",
                    help="Send each of the k samples as its own request (models without candidate_count > 1)")
@@ -100,7 +107,11 @@ async def main():
     from cdc.processor import CDCDocLensProcessor
     from cdc.prompts import with_paper_common_sense_rule
 
-    if args.use_vertex:
+    if args.qwen_base_url:
+        from cdc.qwen_local import configure_qwen
+        configure_qwen(args.qwen_base_url, max_tokens=args.qwen_max_tokens,
+                       max_images=args.qwen_max_images, nav_chunk_pages=args.nav_chunk_pages)
+    elif args.use_vertex:
         project = os.environ.get("GOOGLE_CLOUD_PROJECT")
         if not project:
             sys.exit("--use_vertex needs GOOGLE_CLOUD_PROJECT (and GOOGLE_APPLICATION_CREDENTIALS).")

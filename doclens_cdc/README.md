@@ -58,6 +58,17 @@ Qwen3-VL-8B (Table 9) needs a separate API account.
 
 **Same results require the same models.** Gemini 2.5 is no longer offered to new Gemini API keys. The notebook therefore supports Vertex AI through a `GCP_SA_KEY` service-account secret and tests every model before running. With substitutes (`MODEL_MAP`), report the runs as a re-run, not a reproduction. Sampling at temperature 0.7 means a faithful reproduction lands within about 1–2 points of the paper.
 
+### Free route: Qwen3-VL-8B on Kaggle (`kaggle/doclens_qwen_kaggle.ipynb`)
+
+The paper's open-source backbone runs on Kaggle's 2x T4 through vLLM, with no API key and no limits. It reproduces Appendix C, Table 9 on a random sample of 200 MMLongBench-Doc questions: Vanilla 43.0, OCR 42.9, DocLens 61.1.
+
+The notebook restores the MinerU output saved earlier (`parsed_MMLongBenchDoc.tar`, attached as an input), so nothing is parsed again. `cdc/qwen_local.py` adapts DocLens' Qwen path to a local, memory-limited server; the notebook lists each deviation it introduces:
+
+- page chunking in the Page Navigator;
+- image halving on context overflow;
+- 2x2 tiling above the per-request image limit;
+- answer extraction for scoring on Qwen instead of Gemini.
+
 ## Step 2: the novelty (`kaggle/doclens_cdc_kaggle.ipynb`)
 
 ## What is in this folder
@@ -75,6 +86,8 @@ Qwen3-VL-8B (Table 9) needs a separate API account.
 | `scripts/` | Data download, subset selection, degraded variants, MinerU parsing, calibration, analysis |
 | `kaggle/doclens_reproduce_kaggle.ipynb` | Step 1: re-runs the paper's Tables 1–4, 6, 10, 11 and compares with the paper |
 | `reproduction/` | The paper's numbers (`paper_numbers.json`) and the settings of every re-runnable row (`experiments.py`) |
+| `kaggle/doclens_qwen_kaggle.ipynb` | Free route: Table 9 with Qwen3-VL-8B on a local vLLM server |
+| `cdc/qwen_local.py` | Local Qwen client, chunked Page Navigator, Qwen-based answer extraction |
 | `kaggle/doclens_cdc_kaggle.ipynb` | Step 2: the confidence-gated abstention experiments |
 | `scripts/report_reproduction.py` | Our results next to the paper's, cell by cell |
 | `tests/` | Offline tests (no API, no GPU). They run against the real DocLens code with a fake LLM |

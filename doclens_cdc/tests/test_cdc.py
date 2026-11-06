@@ -515,3 +515,128 @@ def test_single_candidate_calls_for_models_without_candidate_count(tmp_path, mon
         config=types.GenerateContentConfig(candidate_count=8, temperature=0.7), max_attempts=1, retry_delay=0))
     assert len(texts) == 8 and len(set(texts)) == 8 and tokens == 56
     assert seen == [1] * 8  # never asked for more than one candidate per request
+
+
+# --------------------------------------------------------------------------- #
+# Qwen3-VL-8B on a local vLLM server (fake OpenAI-compatible client)
+# --------------------------------------------------------------------------- #
+class _FakeQwen:
+    """Stands in for openai.AsyncOpenAI pointed at vLLM."""
+
+    def __init__(self, max_prompt_images=None, fail_first_with=None):
+        from types import SimpleNamespace
+
+        self.requests = []
+        self.max_prompt_images = max_prompt_images
+        self.fail_first_with = fail_first_with
+        outer = self
+
+        async def create(model, messages, max_tokens, temperature, n):
+            outer.requests.append({"model": model, "messages": messages, "n": n, "max_tokens": max_tokens})
+            if outer.fail_first_with and len(outer.requests) == 1:
+                raise RuntimeError(outer.fail_first_with)
+            system = messages[0]["content"]
+            if "located_pages" in system:
+                text = json.dumps({"analysis": "a", "located_pages": "[1, 2]", "prediction": "42"})
+            elif "Extracted answer" in system:
+                text = "42"  # Qwen ignoring the format: the wrapper must still produce a parsable answer
+            else:
+                text = json.dumps({"analysis": "read the table", "prediction": "42"})
+            choices = [SimpleNamespace(message=SimpleNamespace(content=text)) for _ in range(n)]
+            return SimpleNamespace(choices=choices, usage=SimpleNamespace(total_tokens=10 * n))
+
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=create))
+
+
+def _images_in(request):
+    return sum(p["type"] == "image_url" for p in request["messages"][1]["content"])
+
+
+@requires_doclens
+def test_qwen_call_retries_with_smaller_images_and_tiles(monkeypatch):
+    import base64 as b64
+    import io as _io
+
+    from cdc import qwen_local
+
+    fake = _FakeQwen(fail_first_with="The decoder prompt (length 90000) is longer than the maximum model length of 65536.")
+    monkeypatch.setitem(qwen_local._state, "client", fake)
+    monkeypatch.setitem(qwen_local._state, "max_images", 8)
+    buf = _io.BytesIO()
+    Image.new("RGB", (400, 600), "white").save(buf, format="JPEG")
+    img = {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
+                                       "data": b64.b64encode(buf.getvalue()).decode()}}
+    contents = [x for i in range(20) for x in ({"type": "text", "text": f"---- Screenshot of page {i + 1} ----\n"}, img)]
+    texts, tokens = asyncio.run(qwen_local.call_qwen("qwen3-vl-8b-instruct", contents, {
+        "system_prompt": "s", "temperature": 0.7, "candidate_num": 8, "max_output_tokens": 10000}))
+    assert len(texts) == 8 and tokens == 80
+    assert len(fake.requests) == 2 and all(r["model"] == qwen_local.SERVED_MODEL for r in fake.requests)
+    assert all(_images_in(r) <= 8 for r in fake.requests)  # 20 page images tiled 2x2 under the limit
+    assert fake.requests[0]["max_tokens"] == 4096  # DocLens asks 10000; capped for a 64K-context server
+    first = fake.requests[0]["messages"][1]["content"][1]["image_url"]["url"]
+    second = fake.requests[1]["messages"][1]["content"][1]["image_url"]["url"]
+    assert len(second) < len(first)  # context error -> images halved again
+
+
+@requires_doclens
+def test_qwen_chunked_navigator_merges_pages(tmp_path, monkeypatch):
+    from agents import page_navigator_agent
+    from prompts.agent_prompts import PAGE_NAVIGATOR_SYSTEM_PROMPT
+    from utils import config, generation_utils
+
+    from cdc import qwen_local
+
+    _doc(tmp_path, [("clean", 0)] * 5)
+    fake = _FakeQwen()
+    monkeypatch.setattr(generation_utils, "call_qwen_with_retry_async", generation_utils.call_qwen_with_retry_async)
+    monkeypatch.setattr(page_navigator_agent.PageNavigator, "process", page_navigator_agent.PageNavigator.process)
+    from utils import eval_toolkits
+    monkeypatch.setattr(eval_toolkits, "call_gemini_with_retry_async", eval_toolkits.call_gemini_with_retry_async)
+    import openai
+    monkeypatch.setattr(openai, "AsyncOpenAI", lambda **kw: fake)
+    qwen_local.configure_qwen("http://localhost:8000/v1", nav_chunk_pages=2)
+
+    cfg = config.ExpConfig(work_dir=tmp_path, model_name="qwen3-vl-8b-instruct", phase1_candidate_num=8)
+    nav = page_navigator_agent.PageNavigator(model_name="qwen3-vl-8b-instruct",
+                                             system_prompt=PAGE_NAVIGATOR_SYSTEM_PROMPT, exp_config=cfg)
+    data, tokens = asyncio.run(nav.process({"doc_id": "doc1.pdf", "question": "q"}))
+    assert len(fake.requests) == 3  # 5 pages in chunks of 2
+    assert [_images_in(r) for r in sorted(fake.requests, key=_images_in)] == [1, 2, 2]
+    assert all(r["n"] == 8 for r in fake.requests) and tokens == 3 * 80
+    assert data["pgnav_all_located_pages"] == "[1, 2]"
+
+
+@requires_doclens
+def test_run_cdc_cli_with_local_qwen(tmp_path, monkeypatch):
+    """Full CLI path on Qwen: DocLens end-to-end and the MMLongBench-Doc scorer, no Gemini involved."""
+    import importlib.util
+
+    import openai
+    from agents import page_navigator_agent
+    from utils import eval_toolkits, generation_utils
+
+    _doc(tmp_path, [("clean", 0), ("noise", 2)])
+    samples = tmp_path / "samples.json"
+    samples.write_text(json.dumps([_sample()]))
+    fake = _FakeQwen()
+    monkeypatch.setattr(openai, "AsyncOpenAI", lambda **kw: fake)
+    for mod, name in ((generation_utils, "call_qwen_with_retry_async"), (eval_toolkits, "call_gemini_with_retry_async"),
+                      (page_navigator_agent.PageNavigator, "process")):
+        monkeypatch.setattr(mod, name, getattr(mod, name))
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    out = tmp_path / "qwen.jsonl"
+    monkeypatch.setattr(sys, "argv", [
+        "run_cdc.py", "--doclens_root", __import__("os").environ["DOCLENS_ROOT"], "--data_root", str(tmp_path),
+        "--samples", str(samples), "--mode", "doclens", "--output", str(out),
+        "--qwen_base_url", "http://localhost:8000/v1", "--model_name", "qwen3-vl-8b-instruct",
+        "--navigator_model", "qwen3-vl-8b-instruct", "--phase1_candidate_num", "8", "--phase2_candidate_num", "8"])
+    spec = importlib.util.spec_from_file_location("run_cdc_q", PKG_ROOT / "run_cdc.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    asyncio.run(mod.main())
+    rec = json.loads(out.read_text().splitlines()[-1])
+    assert "cdc_error" not in rec, rec.get("cdc_error")
+    assert rec["final_prediction"] == "42" and rec["final_score"] == 1.0
+    assert rec["doclens_cand8_prediction"] == "42"
+    systems = [r["messages"][0]["content"] for r in fake.requests]
+    assert sum("Extracted answer" in s for s in systems) == 2  # final_ and doclens_first_ scored on Qwen
