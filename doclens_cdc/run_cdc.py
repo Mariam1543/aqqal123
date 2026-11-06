@@ -26,7 +26,10 @@ def parse_args():
     p.add_argument("--dataset_name", default="MMLongBenchDoc")
     p.add_argument("--samples", required=True, help="JSON list of questions (DocLens samples format)")
     p.add_argument("--variant", default=None, help="Label stored with every result (e.g. blur_s2)")
-    p.add_argument("--mode", choices=["doclens", "cdc", "analyze"], default="cdc")
+    p.add_argument("--mode", default="cdc",
+                   choices=["vanilla", "vanilla_ocr", "doclens", "no_lens", "no_reasoning", "oracle", "cdc", "analyze"],
+                   help="Paper experiments: vanilla / vanilla_ocr / doclens (Table 1), no_lens / no_reasoning "
+                        "(Table 2), oracle (Table 3). This extension: cdc / analyze. See cdc/processor.py.")
     p.add_argument("--output", required=True, help="JSONL output; re-running resumes from it")
     p.add_argument("--limit", type=int, default=0, help="Only the first N questions")
 
@@ -39,9 +42,13 @@ def parse_args():
     g.add_argument("--api_key_env", default="GEMINI_API_KEY",
                    help="Env var / Kaggle secret holding a Google AI Studio key")
     g.add_argument("--use_vertex", action="store_true",
-                   help="Use DocLens' original Vertex AI client (GOOGLE_CLOUD_PROJECT) instead of an API key")
+                   help="Use Vertex AI like the original DocLens (needs GOOGLE_CLOUD_PROJECT and "
+                        "GOOGLE_APPLICATION_CREDENTIALS) instead of an API key")
     g.add_argument("--rpm", type=float, default=0, help="Max Gemini requests per minute (0 = unlimited)")
     g.add_argument("--max_concurrent", type=int, default=4)
+    g.add_argument("--paper_prompts", action="store_true",
+                   help="Add the 'Rule of Common Sense' that the paper's Adjudicator prompt (Appendix A) has "
+                        "but the released repository's prompt lacks")
 
     g = p.add_argument_group("DocLens settings (defaults = scripts/run_doclens_end2end.sh)")
     g.add_argument("--phase1_input_mode", default="use_ocr")
@@ -89,8 +96,15 @@ async def main():
     from cdc.confidence import CDCConfig, load_calibration
     from cdc.llm_setup import configure_gemini, get_secret
     from cdc.processor import CDCDocLensProcessor
+    from cdc.prompts import with_paper_common_sense_rule
 
-    if not args.use_vertex:
+    if args.use_vertex:
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT")
+        if not project:
+            sys.exit("--use_vertex needs GOOGLE_CLOUD_PROJECT (and GOOGLE_APPLICATION_CREDENTIALS).")
+        configure_gemini(rpm=args.rpm, eval_model=args.eval_model, vertex_project=project,
+                         vertex_location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-east1"))
+    else:
         key = get_secret(args.api_key_env)
         if not key:
             sys.exit(f"Set {args.api_key_env} (env var or Kaggle secret) or pass --use_vertex.")
@@ -118,6 +132,8 @@ async def main():
     else:
         sampler_prompt = ANSWER_SAMPLER_ALL_ANSWERABLE_SYSTEM_PROMPT
         adjudicator_prompt = ADJUDICATOR_ALL_ANSWERABLE_SYSTEM_PROMPT
+    if args.paper_prompts:
+        adjudicator_prompt = with_paper_common_sense_rule(adjudicator_prompt)
 
     agents = dict(
         page_navigator=page_navigator_agent.PageNavigator(

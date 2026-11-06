@@ -47,11 +47,21 @@ class RateLimiter:
             self._next = max(now, self._next) + self.interval
 
 
-def configure_gemini(api_key: str, rpm: float = 0, eval_model: Optional[str] = None):
+def configure_gemini(
+    api_key: Optional[str] = None,
+    rpm: float = 0,
+    eval_model: Optional[str] = None,
+    vertex_project: Optional[str] = None,
+    vertex_location: str = "us-east1",
+):
+    """Install the Gemini client DocLens will use: an API key, or Vertex AI (DocLens' original setup)."""
     from google import genai
     from utils import eval_toolkits, generation_utils
 
-    client = genai.Client(api_key=api_key)
+    if vertex_project:
+        client = genai.Client(vertexai=True, project=vertex_project, location=vertex_location)
+    else:
+        client = genai.Client(api_key=api_key)
     if rpm and rpm > 0:
         limiter = RateLimiter(rpm)
         original = client.aio.models.generate_content

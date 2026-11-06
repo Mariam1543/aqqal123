@@ -35,3 +35,19 @@ def insert_before_output_format(system_prompt: str, addendum: str) -> str:
         head, tail = system_prompt.split(marker, 1)
         return f"{head.rstrip()}\n{addendum}\n{marker}{tail}"
     return f"{system_prompt.rstrip()}\n{addendum}"
+
+
+# The Adjudicator prompt printed in the DocLens paper (Appendix A) contains this rule, which the
+# released repository's ADJUDICATOR_* prompts do not. `--paper_prompts` adds it back verbatim.
+PAPER_COMMON_SENSE_RULE = """- Rule of Common Sense: Sometimes, an agent can be overly pedantic or literal about certain concepts. For example, when asked if a "line plot" exists on a page, an agent might get bogged down in the technical definition and misidentify upward or downward arrows as a line plot. This clearly defies common sense. In reality, the user is an ordinary person. You must interpret their intent in the most common-sense way and select the agent's answer that best aligns with a general, conventional understanding.
+"""
+
+
+def with_paper_common_sense_rule(adjudicator_prompt: str) -> str:
+    if "Rule of Common Sense" in adjudicator_prompt:
+        return adjudicator_prompt
+    marker = "## Input Format"
+    if marker not in adjudicator_prompt:
+        raise ValueError("Unexpected adjudicator prompt layout")
+    head, tail = adjudicator_prompt.split(marker, 1)
+    return f"{head.rstrip()}\n{PAPER_COMMON_SENSE_RULE}\n{marker}{tail}"

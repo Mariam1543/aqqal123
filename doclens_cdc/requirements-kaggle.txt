@@ -1,4 +1,4 @@
-# Runtime dependencies of DocLens + the CDC extension (MinerU is installed separately: pip install -U "mineru[core]")
+# Runtime dependencies of DocLens + the CDC extension (MinerU is installed separately: pip install "mineru[core]==2.7.6"; MinerU 3+/4 changed its CLI)
 pymupdf
 google-genai
 google-auth

@@ -7,8 +7,15 @@ DocLens + Confidence and Degradation Check (CDC).
                                                               Answer Sampler (k) + Adjudicator
                                                               with degradation-aware prompts
 
-Modes
-  doclens : the unmodified DocLens end-to-end pipeline (baseline)
+Modes (paper experiments)
+  vanilla      : backbone reads every page screenshot once            (Table 1 "Vanilla VLMs")
+  vanilla_ocr  : backbone reads every screenshot + its OCR text once  (Table 1 "VLMs Augmented with OCR";
+                 this is DocLens' main.py --phase_name baseline)
+  doclens      : the unmodified DocLens end-to-end pipeline           (Table 1 "DocLens")
+  no_lens      : Reasoning Module on all pages (screenshot + OCR)     (Table 2 "w/o Lens Module")
+  no_reasoning : Lens Module, then one answer from the backbone       (Table 2 "w/o Reasoning Module")
+  oracle       : Reasoning Module on the annotated evidence pages     (Table 3 "Evidence Pages (Oracle)")
+Modes (this extension)
   cdc     : the gated pipeline above
   analyze : computes the CDC report AND runs every path (abstain, correct, doclens) for
             every question, so thresholds can be swept offline (scripts/analyze_results.py)
@@ -62,6 +69,10 @@ from .prompts import (
 from .restoration import restore, to_base64_jpeg
 
 
+MODES = {"vanilla", "vanilla_ocr", "doclens", "no_lens", "no_reasoning", "oracle", "cdc", "analyze"}
+NO_LENS_MODES = {"vanilla", "vanilla_ocr", "no_lens", "oracle"}
+
+
 @dataclass
 class PathResult:
     prediction: str
@@ -73,6 +84,19 @@ class PathResult:
 
 def _user_prompt(question: str) -> str:
     return f"""\n\n**Question**: {question}\n\n**Your Output**:"""
+
+
+def api_failure(record: dict) -> Optional[str]:
+    """DocLens' Gemini wrapper returns the literal answer "Error" after its retries fail (rate limit,
+    daily quota, outage), and its scorer then raises. Such a question would silently count as wrong,
+    so it is marked failed instead and retried on the next run."""
+    failed = [k for k, v in record.items()
+              if (k.endswith("_prediction") or k.endswith("_response")) and str(v).strip() == "Error"]
+    failed += [k for k in record if k.endswith("score_error")]
+    if failed:
+        return ("API call failed (rate limit / daily quota?) for " + ", ".join(sorted(failed)[:5])
+                + ". Re-run the same command later to retry this question.")
+    return None
 
 
 class CDCDocLensProcessor(DocLensProcessor):
@@ -90,8 +114,8 @@ class CDCDocLensProcessor(DocLensProcessor):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        if mode not in ("doclens", "cdc", "analyze"):
-            raise ValueError(f"Unknown mode {mode}")
+        if mode not in MODES:
+            raise ValueError(f"Unknown mode {mode}; choose from {sorted(MODES)}")
         if abstain_policy not in ("single_pass", "lens_answer"):
             raise ValueError(f"Unknown abstain policy {abstain_policy}")
         self.cdc = cdc_config
@@ -103,6 +127,13 @@ class CDCDocLensProcessor(DocLensProcessor):
         self.output_jsonl = output_jsonl
         self.evaluate = evaluate
         self._write_lock = asyncio.Lock()
+        # Paper, Sec. 5.1: "w/o Lens Module" gives the raw screenshots + OCR of every page to the
+        # Reasoning Module; Table 3's oracle row gives it the annotated evidence pages.
+        if mode == "no_lens":
+            self.exp_config.phase2_input_pages = "all"
+            self.exp_config.phase2_input_mode = "use_ocr"
+        elif mode == "oracle":
+            self.exp_config.phase2_input_pages = "evidence_pages"
 
         self.correct_sampler_prompt = insert_before_output_format(
             self.answer_sampler.system_prompt, DEGRADATION_AWARE_SAMPLER_ADDENDUM
@@ -157,7 +188,7 @@ class CDCDocLensProcessor(DocLensProcessor):
     # ------------------------------------------------------------------ #
     # Paths
     # ------------------------------------------------------------------ #
-    async def _abstain_path(self, data: dict) -> PathResult:
+    async def _abstain_path(self, data: dict, temperature: Optional[float] = None) -> PathResult:
         """High confidence: keep the original evidence, answer once, no correction/verification."""
         start = time.time()
         k1 = self.exp_config.phase1_candidate_num
@@ -173,10 +204,26 @@ class CDCDocLensProcessor(DocLensProcessor):
         texts, tokens = await self.answer_sampler.call_llm_with_retry_async(
             content_list=content,
             system_prompt=self.answer_sampler.system_prompt,
-            temperature=self.abstain_temperature,
+            temperature=self.abstain_temperature if temperature is None else temperature,
             candidate_num=1,
         )
         parsed = self.answer_sampler._parse_response(texts[0], ["analysis", "prediction"], "x")
+        return PathResult(parsed["x_prediction"], parsed["x_analysis"], tokens, time.time() - start)
+
+    async def _single_reader(self, data: dict, input_mode: str) -> PathResult:
+        """DocLens' VanillaAgent (one answer over every page), with a selectable input mode."""
+        start = time.time()
+        content = await generation_utils.get_doc_content_list_async(
+            data=data, input_pages="all", input_mode=input_mode, exp_config=self.exp_config
+        )
+        content.append({"type": "text", "text": _user_prompt(data["preprocessed_question"])})
+        texts, tokens = await self.vanilla_reader.call_llm_with_retry_async(
+            content_list=content,
+            system_prompt=self.vanilla_reader.system_prompt,
+            temperature=self.exp_config.temperature,
+            candidate_num=1,
+        )
+        parsed = self.vanilla_reader._parse_response(texts[0], ["analysis", "prediction"], "x")
         return PathResult(parsed["x_prediction"], parsed["x_analysis"], tokens, time.time() - start)
 
     def _build_corrections_sync(self, report: CDCReport, page_evidence) -> Dict[int, PageCorrection]:
@@ -273,6 +320,7 @@ class CDCDocLensProcessor(DocLensProcessor):
         if res.candidates:
             for i, c in enumerate(res.candidates, 1):
                 data[f"{prefix}cand{i}_prediction"] = c["prediction"]
+                data[f"{prefix}cand{i}_analysis"] = c["analysis"]
             # first sampled candidate = the answer before any verification/adjudication
             data[f"{prefix}first_prediction"] = res.candidates[0]["prediction"]
 
@@ -288,6 +336,20 @@ class CDCDocLensProcessor(DocLensProcessor):
         )
         data["cdc_mode"] = self.mode
 
+        if self.mode in NO_LENS_MODES:
+            if self.mode == "vanilla":
+                res = await self._single_reader(data, "vanilla")
+            elif self.mode == "vanilla_ocr":
+                res = await self._single_reader(data, "use_ocr")
+            else:  # no_lens / oracle: full Reasoning Module on the pages set in __init__
+                res = await self._doclens_path(data)
+            self._store(data, "final_", res)
+            data["final_tokens"] = res.tokens
+            prefixes = ["final_", "final_first_"] if res.candidates else ["final_"]
+            if self.evaluate and "answer" in data:
+                await self._score(data, prefixes)
+            return data
+
         # Lens Module
         start = time.time()
         data, lens_tokens = await self.page_navigator.process(data)
@@ -296,7 +358,12 @@ class CDCDocLensProcessor(DocLensProcessor):
         data["lens_prediction"] = lens_majority_answer(data, self.exp_config.phase1_candidate_num)
         score_prefixes = []
 
-        if self.mode == "doclens":
+        if self.mode == "no_reasoning":
+            res = await self._abstain_path(data, temperature=self.exp_config.temperature)
+            self._store(data, "final_", res)
+            data["final_tokens"] = lens_tokens + res.tokens
+            score_prefixes = ["final_"]
+        elif self.mode == "doclens":
             res = await self._doclens_path(data)
             self._store(data, "doclens_", res)
             data["final_prediction"] = res.prediction
@@ -388,10 +455,14 @@ class CDCDocLensProcessor(DocLensProcessor):
         async def run(doc):
             async with semaphore:
                 try:
-                    return await self.process_single_document(doc)
+                    res = await self.process_single_document(doc)
                 except Exception as e:
                     doc["cdc_error"] = f"{e!r}\n{traceback.format_exc()}"
                     return doc
+                problem = api_failure(res)
+                if problem:
+                    res["cdc_error"] = problem
+                return res
 
         tasks = [asyncio.create_task(run(d)) for d in todo]
         with tqdm(total=len(tasks), desc=f"DocLens[{self.mode}]") as pbar:
