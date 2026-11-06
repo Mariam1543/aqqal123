@@ -484,3 +484,34 @@ def test_prepare_subset_random_sample(tmp_path):
     assert rendered == {s["doc_id"][:-4] for s in picked}
     subprocess.run(cmd, check=True, capture_output=True)  # same seed -> same sample
     assert json.loads((out / "samples_subset.json").read_text()) == picked
+
+
+@requires_doclens
+def test_single_candidate_calls_for_models_without_candidate_count(tmp_path, monkeypatch):
+    """New Gemini models reject candidate_count > 1; each sample must then be its own request."""
+    from types import SimpleNamespace
+
+    from google import genai
+    from google.genai import types
+    from utils import generation_utils
+
+    from cdc.llm_setup import configure_gemini
+
+    seen = []
+
+    class FakeModels:
+        async def generate_content(self, model, contents, config):
+            seen.append(config.candidate_count)
+            if (config.candidate_count or 1) > 1:
+                raise RuntimeError("400 INVALID_ARGUMENT Multiple candidates is not enabled for this model")
+            cand = SimpleNamespace(content=SimpleNamespace(parts=[SimpleNamespace(text=f"answer{len(seen)}")]))
+            return SimpleNamespace(candidates=[cand], usage_metadata=SimpleNamespace(total_token_count=7))
+
+    monkeypatch.setattr(genai, "Client", lambda **kw: SimpleNamespace(aio=SimpleNamespace(models=FakeModels())))
+    monkeypatch.setattr(generation_utils, "call_gemini_with_retry_async", generation_utils.call_gemini_with_retry_async)
+    configure_gemini(api_key="k", single_candidate_calls=True)
+    texts, tokens = asyncio.run(generation_utils.call_gemini_with_retry_async(
+        model_name="m", contents=[{"type": "text", "text": "q"}],
+        config=types.GenerateContentConfig(candidate_count=8, temperature=0.7), max_attempts=1, retry_delay=0))
+    assert len(texts) == 8 and len(set(texts)) == 8 and tokens == 56
+    assert seen == [1] * 8  # never asked for more than one candidate per request

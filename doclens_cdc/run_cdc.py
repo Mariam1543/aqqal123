@@ -46,6 +46,8 @@ def parse_args():
                         "GOOGLE_APPLICATION_CREDENTIALS) instead of an API key")
     g.add_argument("--rpm", type=float, default=0, help="Max Gemini requests per minute (0 = unlimited)")
     g.add_argument("--max_concurrent", type=int, default=4)
+    g.add_argument("--single_candidate_calls", action="store_true",
+                   help="Send each of the k samples as its own request (models without candidate_count > 1)")
     g.add_argument("--paper_prompts", action="store_true",
                    help="Add the 'Rule of Common Sense' that the paper's Adjudicator prompt (Appendix A) has "
                         "but the released repository's prompt lacks")
@@ -103,12 +105,14 @@ async def main():
         if not project:
             sys.exit("--use_vertex needs GOOGLE_CLOUD_PROJECT (and GOOGLE_APPLICATION_CREDENTIALS).")
         configure_gemini(rpm=args.rpm, eval_model=args.eval_model, vertex_project=project,
+                         single_candidate_calls=args.single_candidate_calls,
                          vertex_location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-east1"))
     else:
         key = get_secret(args.api_key_env)
         if not key:
             sys.exit(f"Set {args.api_key_env} (env var or Kaggle secret) or pass --use_vertex.")
-        configure_gemini(key, rpm=args.rpm, eval_model=args.eval_model)
+        configure_gemini(key, rpm=args.rpm, eval_model=args.eval_model,
+                         single_candidate_calls=args.single_candidate_calls)
 
     data_root = Path(args.data_root).resolve()
     exp_config = config.ExpConfig(
