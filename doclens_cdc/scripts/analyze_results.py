@@ -93,6 +93,24 @@ def simulate(rows, tau, gate="combined"):
     }
 
 
+def paired_bootstrap(rows, tau, gate="combined", n_boot=5000, seed=0):
+    """CDC minus DocLens on the same questions: mean difference, 95% CI, one-sided p (diff <= 0)."""
+    diffs = []
+    for r in rows:
+        c = gate_confidence(r, gate)
+        cdc = r["abstain_score"] if (0.0 if c is None else c) >= tau else r["correct_score"]
+        diffs.append(cdc - r["doclens_score"])
+    diffs = np.asarray(diffs, float)
+    rng = np.random.default_rng(seed)
+    boot = diffs[rng.integers(0, len(diffs), size=(n_boot, len(diffs)))].mean(axis=1)
+    return {
+        "diff": float(diffs.mean()),
+        "ci_low": float(np.percentile(boot, 2.5)),
+        "ci_high": float(np.percentile(boot, 97.5)),
+        "p_not_better": float((boot <= 0).mean()),
+    }
+
+
 def baselines(rows):
     def mean(key):
         return float(np.mean([r[key] for r in rows]))
@@ -210,6 +228,14 @@ def main():
             csv.append(f"{variant},{name},{len(test)},{m['accuracy']:.4f},{m.get('abstain_rate', 0):.4f},"
                        f"{m.get('over_refinement', 0):.4f},{m.get('under_correction', 0) or 0:.4f},{m.get('tokens', 0):.0f}")
         conf = [r["cdc_confidence"] for r in test]
+        lines.append("")
+        bs = paired_bootstrap(test, taus["combined"])
+        dl_tok = table["DocLens (always verify, original evidence)"]["tokens"]
+        cdc_tok = table[f"CDC (evidence + consistency) @ tau={taus['combined']}"]["tokens"]
+        saving = 1 - cdc_tok / dl_tok if dl_tok else float("nan")
+        lines.append(f"CDC vs DocLens (paired bootstrap, same questions): accuracy {100 * bs['diff']:+.1f} points "
+                     f"(95% CI {100 * bs['ci_low']:+.1f} to {100 * bs['ci_high']:+.1f}, "
+                     f"p(not better) = {bs['p_not_better']:.3f}); tokens {100 * saving:+.1f}% saved")
         lines.append("")
         lines.append(f"AUROC of CDC confidence for 'abstain answer is correct': "
                      f"{auroc(conf, [ok(r['abstain_score']) for r in test]):.3f}; "

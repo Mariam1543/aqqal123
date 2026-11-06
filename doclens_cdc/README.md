@@ -69,7 +69,20 @@ The notebook restores the MinerU output saved earlier (`parsed_MMLongBenchDoc.ta
 - 2x2 tiling above the per-request image limit;
 - answer extraction for scoring on Qwen instead of Gemini.
 
-## Step 2: the novelty (`kaggle/doclens_cdc_kaggle.ipynb`)
+## Step 2: the novelty
+
+### With Qwen3-VL-8B (`kaggle/doclens_cdc_qwen_kaggle.ipynb`, the free route)
+
+Same backbone, settings and questions as the Table 9 reproduction. The notebook has two stages, chosen by `STAGE`:
+
+1. `prepare` (no Qwen server): picks 100 of the 200 Table 9 questions, keeping whole documents with the most questions per page (`scripts/select_novelty_subset.py`). It then creates blurred and noisy copies of their pages, re-parses them with MinerU, calibrates the degradation detector on 10 other documents, and packs everything into `novelty_variants.tar`.
+2. `run`: starts Qwen3-VL-8B on vLLM and runs `--mode analyze` on the clean, blurred and noisy variants.
+
+The clean variant reuses the Table 9 DocLens run (`run_cdc.py --reuse_from`): its Lens outputs and DocLens answers are taken as they are. CDC and DocLens are therefore compared on identical Lens outputs, and the clean pages cost one extra answer per question. When the CDC check flags no page, the correction path is the unmodified Reasoning Module, so it is not run a second time.
+
+The report adds a paired bootstrap test (CDC minus DocLens, 95% CI) for every variant. Its "Always abstain" row is the paper's "w/o Reasoning Module" (Table 2) on the same Lens outputs.
+
+### With Gemini (`kaggle/doclens_cdc_kaggle.ipynb`)
 
 ## What is in this folder
 
@@ -88,7 +101,9 @@ The notebook restores the MinerU output saved earlier (`parsed_MMLongBenchDoc.ta
 | `reproduction/` | The paper's numbers (`paper_numbers.json`) and the settings of every re-runnable row (`experiments.py`) |
 | `kaggle/doclens_qwen_kaggle.ipynb` | Free route: Table 9 with Qwen3-VL-8B on a local vLLM server |
 | `cdc/qwen_local.py` | Local Qwen client, chunked Page Navigator, Qwen-based answer extraction |
-| `kaggle/doclens_cdc_kaggle.ipynb` | Step 2: the confidence-gated abstention experiments |
+| `kaggle/doclens_cdc_kaggle.ipynb` | Step 2: the confidence-gated abstention experiments (Gemini) |
+| `kaggle/doclens_cdc_qwen_kaggle.ipynb` | Step 2 with Qwen3-VL-8B: prepare (degraded copies + MinerU) and run stages |
+| `scripts/select_novelty_subset.py` | Picks the novelty questions from the Table 9 sample at the lowest MinerU cost |
 | `scripts/report_reproduction.py` | Our results next to the paper's, cell by cell |
 | `tests/` | Offline tests (no API, no GPU). They run against the real DocLens code with a fake LLM |
 
@@ -141,6 +156,7 @@ python scripts/analyze_results.py results/*_analyze.jsonl --out_dir results/repo
 - **AUROC** of the CDC confidence for predicting that the abstain answer is correct, which measures how well the gate's confidence predicts correctness.
 - **Ablations**: an evidence-only gate, a consistency-only gate, and the combined gate. You can also add the LLM verbal confidence (`--use_confidence_judge --w_verbal 0.2`), switch the abstain policy (`--abstain_policy lens_answer`), or replace pages with their restored copies instead of adding them (`--replace_restored`).
 - τ is selected on a dev split (`--dev_frac 0.3`) and reported on the held-out questions.
+- **Paired bootstrap**: CDC minus DocLens accuracy on the same questions, with a 95% CI and p(not better), plus the share of tokens saved.
 
 ## Key settings
 

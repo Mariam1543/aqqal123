@@ -52,13 +52,21 @@ def main():
                    help="With --all: a seeded random sample of this many questions (like the paper's "
                         "200-question evaluations in Appendix C); only their documents are rendered")
     p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--exclude_samples", default=None,
+                   help="Never pick the documents of this samples JSON (e.g. keep calibration documents "
+                        "disjoint from the evaluation documents)")
+    p.add_argument("--samples_name", default="samples_subset.json", help="File name of the written samples")
     args = p.parse_args()
 
     samples = json.loads(Path(args.samples).read_text(encoding="utf-8"))
     docs_dir = Path(args.documents)
     by_doc = defaultdict(list)
+    excluded = set()
+    if args.exclude_samples:
+        excluded = {q["doc_id"] for q in json.loads(Path(args.exclude_samples).read_text(encoding="utf-8"))}
     for s in samples:
-        by_doc[s["doc_id"]].append(s)
+        if s["doc_id"] not in excluded:
+            by_doc[s["doc_id"]].append(s)
 
     page_counts = {}
     for doc_id in by_doc:
@@ -101,7 +109,7 @@ def main():
 
     out_root = Path(args.out_root)
     out_root.mkdir(parents=True, exist_ok=True)
-    (out_root / "samples_subset.json").write_text(json.dumps(subset, ensure_ascii=False, indent=2))
+    (out_root / args.samples_name).write_text(json.dumps(subset, ensure_ascii=False, indent=2))
 
     clean_docs = out_root / "clean" / "data" / args.dataset_name / "documents"
     with ProcessPoolExecutor(args.workers) as ex:
@@ -109,7 +117,7 @@ def main():
         total_pages = sum(tqdm(ex.map(_render, jobs), total=len(jobs), desc="Rendering documents"))
 
     print(f"{len(subset)} questions from {len(chosen)} documents ({total_pages} pages)")
-    print(f"  samples: {out_root / 'samples_subset.json'}")
+    print(f"  samples: {out_root / args.samples_name}")
     print(f"  pages:   {clean_docs}")
 
 

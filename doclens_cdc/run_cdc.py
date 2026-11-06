@@ -32,6 +32,9 @@ def parse_args():
                         "(Table 2), oracle (Table 3). This extension: cdc / analyze. See cdc/processor.py.")
     p.add_argument("--output", required=True, help="JSONL output; re-running resumes from it")
     p.add_argument("--limit", type=int, default=0, help="Only the first N questions")
+    p.add_argument("--reuse_from", nargs="*", default=[],
+                   help="JSONL outputs of earlier runs (same questions, variant and model, e.g. the Table 9 "
+                        "doclens run): their Lens outputs, and in analyze mode their DocLens answers, are reused")
 
     g = p.add_argument_group("models")
     g.add_argument("--model_name", default="gemini-2.5-flash")
@@ -171,6 +174,18 @@ async def main():
 
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
+    reuse = {}
+    for path in args.reuse_from:
+        if not Path(path).exists():
+            print(f"--reuse_from: {path} not found, ignored")
+            continue
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                rec = json.loads(line)
+                if "cdc_error" not in rec:
+                    reuse[CDCDocLensProcessor.sample_key(rec)] = rec
+    if args.reuse_from:
+        print(f"Reusing earlier results for up to {len(reuse)} questions")
     processor = CDCDocLensProcessor(
         exp_config=exp_config,
         **agents,
@@ -182,6 +197,7 @@ async def main():
         keep_original_on_restore=not args.replace_restored,
         output_jsonl=output,
         evaluate=not args.no_eval,
+        reuse_records=reuse,
     )
 
     data_list = json.loads(Path(args.samples).read_text(encoding="utf-8"))

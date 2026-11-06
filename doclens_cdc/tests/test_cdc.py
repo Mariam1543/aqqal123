@@ -640,3 +640,76 @@ def test_run_cdc_cli_with_local_qwen(tmp_path, monkeypatch):
     assert rec["doclens_cand8_prediction"] == "42"
     systems = [r["messages"][0]["content"] for r in fake.requests]
     assert sum("Extracted answer" in s for s in systems) == 2  # final_ and doclens_first_ scored on Qwen
+
+
+@requires_doclens
+def test_analyze_reuses_earlier_run_and_skips_duplicate_correction(tmp_path, monkeypatch):
+    """Clean document: Lens + DocLens come from the earlier doclens run; with no flagged page the
+    correction path equals the DocLens path, so only the abstain answer is new."""
+    _doc(tmp_path, [("clean", 0), ("clean", 0)])
+    calls = []
+    proc = _make_processor(tmp_path, "doclens", calls, monkeypatch)
+    sample = _sample() | {"variant": "clean", "model_name": "gemini-2.5-flash"}
+    earlier = asyncio.run(proc.process_single_document(dict(sample)))
+    key = proc.sample_key(earlier)
+
+    calls.clear()
+    proc = _make_processor(tmp_path, "analyze", calls, monkeypatch, reuse_records={key: earlier})
+    r = asyncio.run(proc.process_single_document(dict(sample)))
+    assert r["lens_reused"] and r["doclens_reused"] and r["correct_is_doclens"]
+    assert [c["agent"] for c in calls] == ["AnswerSampler"] and calls[0]["k"] == 1  # abstain path only
+    assert r["doclens_prediction"] == earlier["doclens_prediction"] == r["correct_prediction"]
+    assert r["pgnav_all_located_pages"] == earlier["pgnav_all_located_pages"]
+    for prefix in ("abstain_", "correct_", "doclens_", "doclens_first_"):
+        assert r[f"{prefix}score"] == 1.0
+
+    # another variant (or model) must not reuse it
+    calls.clear()
+    other = dict(sample, variant="blur_s2")
+    r = asyncio.run(proc.process_single_document(other))
+    assert "lens_reused" not in r and calls[0]["agent"] == "PageNavigator"
+
+
+def test_select_novelty_subset_prefers_many_questions_per_page():
+    sys.path.insert(0, str(PKG_ROOT / "scripts"))
+    pytest.importorskip("pymupdf")
+    from select_novelty_subset import select
+
+    samples = ([{"doc_id": "a.pdf", "question": f"a{i}"} for i in range(3)]
+               + [{"doc_id": "b.pdf", "question": f"b{i}"} for i in range(4)]
+               + [{"doc_id": "c.pdf", "question": "c0"}])
+    pages = {"a.pdf": 10, "b.pdf": 100, "c.pdf": 2}
+    subset, docs, n_pages = select(samples, pages, n_questions=4, max_total_pages=1000, max_doc_pages=200)
+    assert docs == ["c.pdf", "a.pdf"] and n_pages == 12  # 0.5 and 0.3 questions/page before b (0.04)
+    assert [q["question"] for q in subset] == ["a0", "a1", "a2", "c0"]  # original order kept
+    _, docs, _ = select(samples, pages, n_questions=10, max_total_pages=50, max_doc_pages=200)
+    assert "b.pdf" not in docs  # page budget
+
+
+def test_make_variants_only_for_selected_documents(tmp_path):
+    for doc in ("keep", "skip"):
+        d = tmp_path / "clean" / "data" / "MMLongBenchDoc" / "documents" / doc
+        d.mkdir(parents=True)
+        make_page(seed=1).resize((300, 400)).save(d / "1.jpeg", quality=95)
+    (tmp_path / "s.json").write_text(json.dumps([{"doc_id": "keep.pdf", "question": "q"}]))
+    subprocess.run([sys.executable, str(PKG_ROOT / "scripts/make_variants.py"), "--out_root", str(tmp_path),
+                    "--variants", "blur_s2", "--samples", str(tmp_path / "s.json"), "--workers", "1"],
+                   check=True, capture_output=True)
+    made = {p.parent.name for p in (tmp_path / "blur_s2").rglob("*.jpeg")}
+    assert made == {"keep"}
+
+
+def test_report_has_paired_bootstrap(tmp_path):
+    rows = []
+    for i in range(40):
+        rows.append({"variant": "blur_s2", "doc_id": f"d{i}", "question": f"q{i}", "answer": "x",
+                     "abstain_score": 1.0, "correct_score": 1.0 if i % 2 else 0.0,
+                     "doclens_score": 1.0 if i % 4 == 0 else 0.0, "doclens_first_score": 1.0,
+                     "cdc_confidence": 0.9, "cdc_report": {"evidence_reliability": 0.9, "consistency": 0.9},
+                     "lens_tokens": 100, "abstain_tokens": 10, "correct_tokens": 900, "doclens_tokens": 900})
+    f = tmp_path / "r.jsonl"
+    f.write_text("\n".join(json.dumps(r) for r in rows))
+    subprocess.run([sys.executable, str(PKG_ROOT / "scripts/analyze_results.py"), str(f), "--out_dir",
+                    str(tmp_path / "rep"), "--dev_frac", "0", "--tau", "0.7"], check=True, capture_output=True)
+    text = (tmp_path / "rep" / "report.md").read_text()
+    assert "CDC vs DocLens (paired bootstrap" in text and "+75.0 points" in text
