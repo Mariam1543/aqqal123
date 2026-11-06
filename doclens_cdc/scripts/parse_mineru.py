@@ -30,7 +30,8 @@ def main():
     p.add_argument("--dataset_name", default="MMLongBenchDoc")
     p.add_argument("--backend", default="pipeline")
     p.add_argument("--table", default="False", help="DocLens parses with table recognition off")
-    p.add_argument("--batch_size", type=int, default=150)
+    p.add_argument("--batch_size", type=int, default=100,
+                   help="Pages per MinerU call; MinerU keeps a whole call in RAM, 400 overflows Kaggle")
     p.add_argument("--extra_args", default="", help="Extra CLI args passed to mineru")
     p.add_argument("--keep_debug_files", action="store_true",
                    help="Keep MinerU's per-page debug PDFs (layout/span/origin); DocLens never reads them")
