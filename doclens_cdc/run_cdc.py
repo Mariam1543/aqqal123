@@ -52,7 +52,8 @@ def parse_args():
                    help="Use a local OpenAI-compatible server (vLLM) serving Qwen3-VL-8B-Instruct, e.g. "
                         "http://localhost:8000/v1; model names must then start with 'qwen'")
     g.add_argument("--qwen_max_tokens", type=int, default=4096, help="Output-token cap per Qwen request")
-    g.add_argument("--qwen_timeout", type=float, default=1800, help="Seconds before a Qwen request is retried")
+    g.add_argument("--qwen_timeout", type=float, default=0,
+                   help="Seconds before a Qwen request is retried (0 = wait; queued requests on a busy server can take long)")
     g.add_argument("--qwen_max_images", type=int, default=64, help="Images per request the server accepts")
     g.add_argument("--nav_chunk_pages", type=int, default=30,
                    help="With --qwen_base_url: Page Navigator chunk size in pages (paper: 50 for Claude)")

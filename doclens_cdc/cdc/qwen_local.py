@@ -180,13 +180,13 @@ def chunked_navigator(chunk_pages: int):
 
 
 def configure_qwen(base_url: str, max_tokens: int = 4096, max_images: int = 64, nav_chunk_pages: int = 30,
-                   timeout: float = 1800):
+                   timeout: float = 0):
     import openai
     from agents import page_navigator_agent
     from utils import eval_toolkits, generation_utils
 
     _state["client"] = openai.AsyncOpenAI(base_url=base_url, api_key="EMPTY", max_retries=0,
-                                             timeout=timeout or None)  # a hung request is retried, not waited on forever
+                                             timeout=timeout or None)  # 0: no client timeout (time in the server queue counts)
     _state["max_tokens"] = max_tokens
     _state["max_images"] = max_images
     generation_utils.call_qwen_with_retry_async = call_qwen
