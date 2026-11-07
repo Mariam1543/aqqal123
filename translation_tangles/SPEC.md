@@ -250,3 +250,10 @@ mode by default: prompt as plain text, no chat template, whole continuation kept
 tokens). The chat-template run is kept as `qwen2.5-0.5b@chat` for comparison
 (`results/fast_metrics_qwen2.5-0.5b@chat.json`). Llama-3.2-1B is in Sec. 4.3 but in no
 result table, so it is not run. Paper BLEU values are in `analysis/paper_values.py`.
+
+Raw-mode check (Qwen2.5-0.5B, 18 of 24 directions; `results/fast_metrics_qwen2.5-0.5b_raw_18dirs.json`):
+de-en BLEU 2.44 vs paper 2.45, en-de 0.99 vs 1.05, en-ru 0.64 vs 0.55; mean over the 18
+directions 0.51 (raw) vs 1.00 (paper) vs 5.60 (chat). Raw mode reproduces the paper's
+small-model regime; chat mode does not. Our raw outputs are somewhat longer than the paper's
+(de-en TER 1033 vs 764, WER 10.3 vs 7.7), consistent with the paper capping new tokens near
+256–300 instead of our 400; truncating our outputs to that cap would be equivalent.
