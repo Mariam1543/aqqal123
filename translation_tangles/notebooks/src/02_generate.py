@@ -22,6 +22,7 @@ MODEL = "qwen2.5-0.5b"   # a key of REGISTRY below
 SMOKE = True             # True: 5 sentences x 2 directions, printed, not saved as results
 BACKEND = "auto"         # "vllm", "hf" (transformers), or "auto" (try vLLM, fall back to hf)
 SUITES = None            # None = the suites the paper ran this model on; or e.g. ["general"]
+PROMPT_MODE = None       # None = the model's default below; "chat" or "raw" to override (saved under <model>@<mode>)
 
 # %% [markdown]
 # ## Model registry
@@ -30,6 +31,16 @@ SUITES = None            # None = the suites the paper ran this model on; or e.g
 # `suites` follows the paper: 13 models on the general benchmark (Figs. 7–16) and
 # 8 on the domain benchmark (Figs. 17–25).
 # Large models load pre-quantized 4-bit (AWQ) weights so they fit on 2× T4 (29 GB).
+#
+# `prompt` is how the prompt reaches the model:
+# - **chat**: one user turn through the model's chat template — how the Groq-hosted models in the
+#   paper were called.
+# - **raw**: the prompt as plain text with no chat template, and the whole continuation kept.
+#   The paper's locally run small models (OLMo, Phi-3.5-mini, Qwen) have TER 365–990 and WER 3.7–7.8
+#   on de-en (Figs. 9, 11), i.e. outputs several times longer than the reference, which is what this
+#   produces. Their BLEU is also far below what these models reach with a chat template.
+#
+# Llama-3.2-1B is named in Sec. 4.3 but appears in none of the result tables, so it is not run.
 # Models under "needs a bigger GPU" do not fit on Kaggle even at 4-bit.
 
 # %%
@@ -37,12 +48,12 @@ GEN = ["general"]
 DOM = ["literature", "medical", "law"]
 REGISTRY = {
     # small (<= 7B)
-    "qwen2.5-0.5b": dict(hf="Qwen/Qwen2.5-0.5B-Instruct", size="small", suites=GEN),
-    "qwen2.5-1.5b": dict(hf="Qwen/Qwen2.5-1.5B-Instruct", size="small", suites=GEN),
-    "qwen2.5-3b": dict(hf="Qwen/Qwen2.5-3B-Instruct", size="small", suites=GEN),
-    "llama-3.2-1b": dict(hf="meta-llama/Llama-3.2-1B-Instruct", size="small", suites=GEN),
-    "olmo-1b": dict(hf="allenai/OLMo-1B-hf", size="small", suites=GEN, base=True),
-    "phi-3.5-mini": dict(hf="microsoft/Phi-3.5-mini-instruct", size="small", suites=GEN),
+    "qwen2.5-0.5b": dict(hf="Qwen/Qwen2.5-0.5B-Instruct", size="small", suites=GEN, prompt="raw"),
+    "qwen2.5-1.5b": dict(hf="Qwen/Qwen2.5-1.5B-Instruct", size="small", suites=GEN, prompt="raw"),
+    "qwen2.5-3b": dict(hf="Qwen/Qwen2.5-3B-Instruct", size="small", suites=GEN, prompt="raw"),
+    "olmo-1b": dict(hf="allenai/OLMo-1B-hf", size="small", suites=GEN, prompt="raw"),
+    "phi-3.5-mini": dict(hf="microsoft/Phi-3.5-mini-instruct", size="small", suites=GEN, prompt="raw"),
+    "llama-3.2-1b": dict(hf="meta-llama/Llama-3.2-1B-Instruct", size="small", suites=GEN),   # not in the tables
     # medium (7-30B)
     "gemma-7b": dict(hf="google/gemma-7b-it", size="medium", suites=GEN),
     "gemma2-9b": dict(hf="google/gemma-2-9b-it", size="medium", suites=GEN),
@@ -67,12 +78,14 @@ REGISTRY = {
 cfg = REGISTRY[MODEL]
 suites = SUITES or cfg["suites"]
 REASONING = cfg.get("reasoning", False)
-BASE = cfg.get("base", False)
+MODE = PROMPT_MODE or cfg.get("prompt", "chat")
+RAW = MODE == "raw"
+RUN_NAME = MODEL if MODE == cfg.get("prompt", "chat") else f"{MODEL}@{MODE}"
 MAX_MODEL_LEN = 6144 if REASONING else 4096
-MAX_NEW = 2048 if REASONING else (256 if BASE else 400)
+MAX_NEW = 2048 if REASONING else 400
 INPUT_LIMIT = MAX_MODEL_LEN - max(500, MAX_NEW + 100)   # App. A.1: reserve room for prompt + response
 TEMPERATURE, SEED, HF_BATCH = 0.1, 42, 16
-print(MODEL, cfg, "| suites:", suites)
+print(RUN_NAME, cfg, "| prompt mode:", MODE, "| suites:", suites)
 if cfg.get("big"):
     print("WARNING: this model does not fit on Kaggle 2x T4; run it on a >= 48 GB GPU.")
 
@@ -93,11 +106,11 @@ print(f"Data: {DATA}  |  {len(directions)} directions")
 if SMOKE:
     directions = directions[:2]
 
-OUT = Path("/kaggle/working") / ("smoke" if SMOKE else "outputs") / MODEL
+OUT = Path("/kaggle/working") / ("smoke" if SMOKE else "outputs") / RUN_NAME
 OUT.mkdir(parents=True, exist_ok=True)
 
 # Resume: copy finished files from an attached earlier output of this model, if any
-for prev in glob.glob(f"/kaggle/input/**/outputs/{MODEL}", recursive=True):
+for prev in glob.glob(f"/kaggle/input/**/outputs/{RUN_NAME}", recursive=True):
     if not SMOKE:
         shutil.copytree(prev, OUT, dirs_exist_ok=True)
         print("Resumed from", prev)
@@ -125,7 +138,7 @@ torch.manual_seed(SEED)
 n_gpu = torch.cuda.device_count()
 weights = cfg.get("awq") or cfg["hf"]
 tok = AutoTokenizer.from_pretrained(cfg["hf"], trust_remote_code=True)
-USE_CHAT = (not BASE) and bool(tok.chat_template)
+USE_CHAT = (not RAW) and bool(tok.chat_template)
 print("GPUs:", n_gpu, "| weights:", weights, "| chat template:", USE_CHAT)
 
 llm = model = None
@@ -179,21 +192,19 @@ def encode(row):
 
 def clean(text):
     """Minimal post-processing: drop reasoning blocks and a leading 'Translation:' echo.
-    Everything else (notes, refusals) is kept, as in the paper's outputs (App. E)."""
+    Everything else (notes, refusals, and in raw mode the whole continuation) is kept,
+    as in the paper's outputs (App. E, Figs. 9, 11)."""
     if REASONING:
         text = text.split("</think>", 1)[1] if "</think>" in text else ("" if "<think>" in text else text)
     text = text.strip()
     if text.lower().startswith("translation:"):
         text = text[len("translation:"):].strip()
-    if BASE:   # a base model keeps writing after the translation; keep its first line
-        text = next((l.strip() for l in text.splitlines() if l.strip()), "")
     return text
 
 def generate(id_lists):
     """Returns (raw_text, finish_reason) per prompt, in input order."""
     if backend == "vllm":
-        sp = SamplingParams(temperature=TEMPERATURE, max_tokens=MAX_NEW, seed=SEED,
-                            stop=["\n\n"] if BASE else None)
+        sp = SamplingParams(temperature=TEMPERATURE, max_tokens=MAX_NEW, seed=SEED)
         outs = llm.generate([{"prompt_token_ids": ids} for ids in id_lists], sp, use_tqdm=False)
         return [(o.outputs[0].text, o.outputs[0].finish_reason) for o in outs]
     results = [None] * len(id_lists)
@@ -230,7 +241,8 @@ for path in directions:
     dest.parent.mkdir(parents=True, exist_ok=True)
     with open(dest, "w", encoding="utf-8") as f:
         for r, (ids, trunc), (raw, finish) in zip(rows, enc, outs):
-            f.write(json.dumps({**r, "model": MODEL, "hf_id": weights, "backend": backend,
+            f.write(json.dumps({**r, "model": RUN_NAME, "hf_id": weights, "backend": backend,
+                                "prompt_mode": MODE,
                                 "output": clean(raw), "raw_output": raw, "finish_reason": finish,
                                 "n_prompt_tokens": len(ids), "truncated": trunc}, ensure_ascii=False) + "\n")
     dt = time.time() - t0
@@ -243,5 +255,5 @@ print(f"Total: {(time.time() - t_all) / 60:.1f} min, backend {backend}")
 
 # %%
 if not SMOKE:
-    shutil.make_archive(f"/kaggle/working/outputs_{MODEL}", "zip", OUT.parent, MODEL)
-    print(f"Saved /kaggle/working/outputs_{MODEL}.zip")
+    shutil.make_archive(f"/kaggle/working/outputs_{RUN_NAME}", "zip", OUT.parent, RUN_NAME)
+    print(f"Saved /kaggle/working/outputs_{RUN_NAME}.zip")
