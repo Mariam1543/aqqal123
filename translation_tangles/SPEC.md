@@ -239,3 +239,14 @@ Agreement (Eq. 6): Σ_b |H_b ∩ L_b| / Σ_b |H_b| × 100.
   flags are identical to embedding everything.
 - Judge: `{Bias Types}` is the full six-category list; categories in replies are normalised
   (religion→religious, culture→cultural, …); `modelVersion` is stored per call.
+
+## 12. Prompt mode for the small local models (`02_generate`, `PROMPT_MODE`)
+
+The first full run (Qwen2.5-0.5B with its chat template) scored far above the paper:
+de-en BLEU 19.8 vs 2.45, TER 90 vs 764. The paper's TER (365–990) and WER (3.7–7.8) for
+OLMo-1B, Phi-3.5-mini and Qwen-2.5-* mean their outputs were several times longer than the
+reference, while the Groq-hosted models have normal TER. So the small models run in **raw**
+mode by default: prompt as plain text, no chat template, whole continuation kept (400 new
+tokens). The chat-template run is kept as `qwen2.5-0.5b@chat` for comparison
+(`results/fast_metrics_qwen2.5-0.5b@chat.json`). Llama-3.2-1B is in Sec. 4.3 but in no
+result table, so it is not run. Paper BLEU values are in `analysis/paper_values.py`.
