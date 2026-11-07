@@ -4,6 +4,8 @@ settings. Paper settings (Appendix D.1): Te = Ta = 8 samples, temperature 0.7, M
 200-DPI screenshots; the Page Navigator uses the same backbone as the Reasoning Module in the main
 results (Table 3: "Page Navigator w/ Gemini-2.5-Pro ... 67.6"; Sec. 5.5 swaps it for cheaper models).
 
+Qwen3-VL-8B (tier 5) runs on a local vLLM server (run_cdc.py --qwen_base_url, cdc/qwen_local.py).
+
 NOT re-runnable here (cite the paper instead): the Claude-4-Sonnet rows (the released Claude code
 path does not return token counts and crashes), SimpleDoc / MACT / M3DocRAG / MDocAgent, GPT-4o and
 o4-mini, the human-expert score, Figure 4 (block-level bounding boxes need prompts that are not
@@ -45,6 +47,10 @@ EXPERIMENTS = {
     "flash_no_ocr": _exp("doclens", FLASH, nav_input="vanilla", tier=4, note="Table 4"),
     "flashlite_doclens": _exp("doclens", FLASHLITE, tier=4, note="Table 11"),
     "flashlite_no_reasoning": _exp("no_reasoning", FLASHLITE, tier=4, note="Table 11"),
+    # Tier 5: open-source backbone, Appendix C Table 9 (paper: 200 random MMLongBench-Doc questions)
+    "qwen_vanilla": _exp("vanilla", QWEN, tier=5, note="Table 9, Vanilla Qwen3-VL-8B"),
+    "qwen_ocr": _exp("vanilla_ocr", QWEN, tier=5, note="Table 9, Qwen3-VL-8B + OCR"),
+    "qwen_doclens": _exp("doclens", QWEN, tier=5, note="Table 9, DocLens w/ Qwen3-VL-8B"),
 }
 
 

@@ -53,8 +53,14 @@ def configure_gemini(
     eval_model: Optional[str] = None,
     vertex_project: Optional[str] = None,
     vertex_location: str = "us-east1",
+    single_candidate_calls: bool = False,
 ):
-    """Install the Gemini client DocLens will use: an API key, or Vertex AI (DocLens' original setup)."""
+    """Install the Gemini client DocLens will use: an API key, or Vertex AI (DocLens' original setup).
+
+    single_candidate_calls: newer Gemini models reject candidate_count > 1 ("Multiple candidates is
+    not enabled for this model"), and DocLens' wrapper then drops every page image and retries. With
+    this flag each of the k samples is its own request, as the paper does for Claude (Appendix D.1).
+    """
     from google import genai
     from utils import eval_toolkits, generation_utils
 
@@ -72,6 +78,22 @@ def configure_gemini(
 
         client.aio.models.generate_content = limited_generate_content
     generation_utils.gemini_client = client
+
+    if single_candidate_calls:
+        original_gemini = generation_utils.call_gemini_with_retry_async
+
+        async def split_candidates(model_name, contents, config, *args, **kwargs):
+            k = config.candidate_count or 1
+            if k <= 1:
+                return await original_gemini(model_name, contents, config, *args, **kwargs)
+            one = config.model_copy(update={"candidate_count": 1})
+            results = await asyncio.gather(*[
+                original_gemini(model_name, contents, one.model_copy(), *args, **kwargs) for _ in range(k)
+            ])
+            texts = [t for r in results for t in r[0][:1]]
+            return texts, sum(r[1] for r in results)
+
+        generation_utils.call_gemini_with_retry_async = split_candidates
 
     if eval_model:
         original_call = eval_toolkits.call_gemini_with_retry_async

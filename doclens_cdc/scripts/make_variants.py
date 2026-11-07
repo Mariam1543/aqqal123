@@ -36,11 +36,16 @@ def main():
     p.add_argument("--dataset_name", default="MMLongBenchDoc")
     p.add_argument("--variants", nargs="+", required=True)
     p.add_argument("--workers", type=int, default=4)
+    p.add_argument("--samples", default=None, help="Only degrade the documents of this samples JSON")
     args = p.parse_args()
 
     root = Path(args.out_root)
     clean_docs = root / "clean" / "data" / args.dataset_name / "documents"
     pages = sorted(clean_docs.glob("*/*.jpeg"))
+    if args.samples:
+        import json
+        keep = {Path(q["doc_id"]).stem for q in json.loads(Path(args.samples).read_text(encoding="utf-8"))}
+        pages = [pg for pg in pages if pg.parent.name in keep]
     if not pages:
         raise SystemExit(f"No clean pages in {clean_docs}; run prepare_subset.py first.")
 

@@ -14,6 +14,7 @@ import argparse
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 
@@ -30,7 +31,8 @@ def main():
     p.add_argument("--dataset_name", default="MMLongBenchDoc")
     p.add_argument("--backend", default="pipeline")
     p.add_argument("--table", default="False", help="DocLens parses with table recognition off")
-    p.add_argument("--batch_size", type=int, default=150)
+    p.add_argument("--batch_size", type=int, default=100,
+                   help="Pages per MinerU call; MinerU keeps a whole call in RAM, 400 overflows Kaggle")
     p.add_argument("--extra_args", default="", help="Extra CLI args passed to mineru")
     p.add_argument("--keep_debug_files", action="store_true",
                    help="Keep MinerU's per-page debug PDFs (layout/span/origin); DocLens never reads them")
@@ -47,6 +49,8 @@ def main():
     print(f"{len(todo)} pages to parse under {docs}")
 
     stage = Path(args.root) / "_mineru_stage"
+    log_path = Path(args.root) / "mineru_log.txt"
+    print(f"MinerU output goes to {log_path}; one line per finished batch below.", flush=True)
     for b in range(0, len(todo), args.batch_size):
         batch = todo[b : b + args.batch_size]
         shutil.rmtree(stage, ignore_errors=True)
@@ -62,8 +66,19 @@ def main():
         cmd = ["mineru", "-p", str(stage / "in"), "-o", str(stage / "out"), "-b", args.backend,
                "-t", args.table]
         cmd += args.extra_args.split()
-        print(f"[batch {b // args.batch_size + 1}] {' '.join(cmd)}")
-        subprocess.run(cmd, env=env, check=True)
+        n_batches = (len(todo) + args.batch_size - 1) // args.batch_size
+        start = time.time()
+        # MinerU prints thousands of lines per batch, which freezes notebook pages; keep them in a file.
+        with open(log_path, "a") as log:
+            log.write(f"\n===== batch {b // args.batch_size + 1}/{n_batches}: {' '.join(cmd)}\n")
+            log.flush()
+            proc = subprocess.run(cmd, env=env, stdout=log, stderr=subprocess.STDOUT)
+        if proc.returncode != 0:
+            tail = log_path.read_text(errors="replace").splitlines()[-30:]
+            print("\n".join(tail))
+            reason = "killed (out of memory? try a smaller --batch_size)" if proc.returncode < 0 else f"exit code {proc.returncode}"
+            raise SystemExit(f"MinerU failed on batch {b // args.batch_size + 1}: {reason}. Full log: {log_path}. "
+                             "Re-run to continue; finished pages are kept.")
 
         missing = 0
         for stem, img in names.items():
@@ -83,8 +98,10 @@ def main():
                 if f.suffix == ".pdf" and not args.keep_debug_files:
                     continue  # saves several GB on the full benchmark
                 shutil.move(str(f), str(dst / name))
-        if missing:
-            print(f"  {missing} pages produced no MinerU output (blank pages?); wrote empty markdown")
+        done_pages = min(b + args.batch_size, len(todo))
+        print(f"[batch {b // args.batch_size + 1}/{n_batches}] done in {(time.time() - start) / 60:.1f} min "
+              f"- {done_pages}/{len(todo)} pages this run"
+              + (f" ({missing} blank pages)" if missing else ""), flush=True)
     shutil.rmtree(stage, ignore_errors=True)
 
     print("Done.")

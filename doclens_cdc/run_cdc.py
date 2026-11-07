@@ -32,6 +32,9 @@ def parse_args():
                         "(Table 2), oracle (Table 3). This extension: cdc / analyze. See cdc/processor.py.")
     p.add_argument("--output", required=True, help="JSONL output; re-running resumes from it")
     p.add_argument("--limit", type=int, default=0, help="Only the first N questions")
+    p.add_argument("--reuse_from", nargs="*", default=[],
+                   help="JSONL outputs of earlier runs (same questions, variant and model, e.g. the Table 9 "
+                        "doclens run): their Lens outputs, and in analyze mode their DocLens answers, are reused")
 
     g = p.add_argument_group("models")
     g.add_argument("--model_name", default="gemini-2.5-flash")
@@ -45,7 +48,16 @@ def parse_args():
                    help="Use Vertex AI like the original DocLens (needs GOOGLE_CLOUD_PROJECT and "
                         "GOOGLE_APPLICATION_CREDENTIALS) instead of an API key")
     g.add_argument("--rpm", type=float, default=0, help="Max Gemini requests per minute (0 = unlimited)")
+    g.add_argument("--qwen_base_url", default=None,
+                   help="Use a local OpenAI-compatible server (vLLM) serving Qwen3-VL-8B-Instruct, e.g. "
+                        "http://localhost:8000/v1; model names must then start with 'qwen'")
+    g.add_argument("--qwen_max_tokens", type=int, default=4096, help="Output-token cap per Qwen request")
+    g.add_argument("--qwen_max_images", type=int, default=64, help="Images per request the server accepts")
+    g.add_argument("--nav_chunk_pages", type=int, default=30,
+                   help="With --qwen_base_url: Page Navigator chunk size in pages (paper: 50 for Claude)")
     g.add_argument("--max_concurrent", type=int, default=4)
+    g.add_argument("--single_candidate_calls", action="store_true",
+                   help="Send each of the k samples as its own request (models without candidate_count > 1)")
     g.add_argument("--paper_prompts", action="store_true",
                    help="Add the 'Rule of Common Sense' that the paper's Adjudicator prompt (Appendix A) has "
                         "but the released repository's prompt lacks")
@@ -98,17 +110,23 @@ async def main():
     from cdc.processor import CDCDocLensProcessor
     from cdc.prompts import with_paper_common_sense_rule
 
-    if args.use_vertex:
+    if args.qwen_base_url:
+        from cdc.qwen_local import configure_qwen
+        configure_qwen(args.qwen_base_url, max_tokens=args.qwen_max_tokens,
+                       max_images=args.qwen_max_images, nav_chunk_pages=args.nav_chunk_pages)
+    elif args.use_vertex:
         project = os.environ.get("GOOGLE_CLOUD_PROJECT")
         if not project:
             sys.exit("--use_vertex needs GOOGLE_CLOUD_PROJECT (and GOOGLE_APPLICATION_CREDENTIALS).")
         configure_gemini(rpm=args.rpm, eval_model=args.eval_model, vertex_project=project,
+                         single_candidate_calls=args.single_candidate_calls,
                          vertex_location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-east1"))
     else:
         key = get_secret(args.api_key_env)
         if not key:
             sys.exit(f"Set {args.api_key_env} (env var or Kaggle secret) or pass --use_vertex.")
-        configure_gemini(key, rpm=args.rpm, eval_model=args.eval_model)
+        configure_gemini(key, rpm=args.rpm, eval_model=args.eval_model,
+                         single_candidate_calls=args.single_candidate_calls)
 
     data_root = Path(args.data_root).resolve()
     exp_config = config.ExpConfig(
@@ -156,6 +174,18 @@ async def main():
 
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
+    reuse = {}
+    for path in args.reuse_from:
+        if not Path(path).exists():
+            print(f"--reuse_from: {path} not found, ignored")
+            continue
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                rec = json.loads(line)
+                if "cdc_error" not in rec:
+                    reuse[CDCDocLensProcessor.sample_key(rec)] = rec
+    if args.reuse_from:
+        print(f"Reusing earlier results for up to {len(reuse)} questions")
     processor = CDCDocLensProcessor(
         exp_config=exp_config,
         **agents,
@@ -167,6 +197,7 @@ async def main():
         keep_original_on_restore=not args.replace_restored,
         output_jsonl=output,
         evaluate=not args.no_eval,
+        reuse_records=reuse,
     )
 
     data_list = json.loads(Path(args.samples).read_text(encoding="utf-8"))

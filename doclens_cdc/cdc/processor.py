@@ -20,6 +20,13 @@ Modes (this extension)
   analyze : computes the CDC report AND runs every path (abstain, correct, doclens) for
             every question, so thresholds can be swept offline (scripts/analyze_results.py)
 
+Saving compute (both are exact, not approximations):
+  * reuse_records: Lens outputs (and, in analyze mode, the DocLens answer) of an earlier run on
+    the same questions, variant and model, e.g. the Table 9 `doclens` run, are reused instead of
+    being recomputed, so CDC and DocLens are compared on identical Lens outputs.
+  * In analyze mode, when the CDC stage flags no page, the correction path is the unmodified
+    Reasoning Module on the original evidence, i.e. the DocLens path; it is not run twice.
+
 This module imports DocLens' own packages (`agents`, `utils`), so the DocLens
 repository root must be on sys.path (run_cdc.py takes care of it).
 """
@@ -111,6 +118,7 @@ class CDCDocLensProcessor(DocLensProcessor):
         keep_original_on_restore: bool = True,
         output_jsonl: Optional[Path] = None,
         evaluate: bool = True,
+        reuse_records: Optional[Dict[str, dict]] = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -126,6 +134,7 @@ class CDCDocLensProcessor(DocLensProcessor):
         self.keep_original_on_restore = keep_original_on_restore
         self.output_jsonl = output_jsonl
         self.evaluate = evaluate
+        self.reuse_records = reuse_records or {}
         self._write_lock = asyncio.Lock()
         # Paper, Sec. 5.1: "w/o Lens Module" gives the raw screenshots + OCR of every page to the
         # Reasoning Module; Table 3's oracle row gives it the annotated evidence pages.
@@ -311,6 +320,33 @@ class CDCDocLensProcessor(DocLensProcessor):
             time.time() - start, cands,
         )
 
+    # ------------------------------------------------------------------ #
+    # Reusing an earlier run
+    # ------------------------------------------------------------------ #
+    def _reusable(self, data: dict) -> Optional[dict]:
+        prev = self.reuse_records.get(self.sample_key(data))
+        if not prev or "pgnav_all_located_pages" not in prev:
+            return None
+        if prev.get("variant") != data.get("variant") or prev.get("model_name") != data.get("model_name"):
+            return None
+        return prev
+
+    def _reused_doclens(self, prev: Optional[dict]) -> Optional[PathResult]:
+        if not prev or "doclens_prediction" not in prev:
+            return None
+        k = self.exp_config.phase2_candidate_num
+        cands = [
+            {"analysis": prev.get(f"doclens_cand{i}_analysis", ""),
+             "prediction": prev.get(f"doclens_cand{i}_prediction", "")}
+            for i in range(1, k + 1)
+        ]
+        return PathResult(prev["doclens_prediction"], prev.get("doclens_analysis", ""),
+                          prev.get("doclens_tokens", 0), prev.get("doclens_time_sec", 0.0), cands)
+
+    @staticmethod
+    async def _ready(res: PathResult) -> PathResult:
+        return res
+
     @staticmethod
     def _store(data: dict, prefix: str, res: PathResult) -> None:
         data[f"{prefix}prediction"] = res.prediction
@@ -350,11 +386,19 @@ class CDCDocLensProcessor(DocLensProcessor):
                 await self._score(data, prefixes)
             return data
 
-        # Lens Module
-        start = time.time()
-        data, lens_tokens = await self.page_navigator.process(data)
-        data["lens_tokens"] = lens_tokens
-        data["lens_time_sec"] = time.time() - start
+        # Lens Module (or its outputs from an earlier run on the same question)
+        prev = self._reusable(data)
+        if prev is not None:
+            data.update({k: v for k, v in prev.items() if k.startswith("pgnav_")})
+            lens_tokens = prev.get("lens_tokens", 0)
+            data["lens_tokens"] = lens_tokens
+            data["lens_time_sec"] = prev.get("lens_time_sec", 0.0)
+            data["lens_reused"] = True
+        else:
+            start = time.time()
+            data, lens_tokens = await self.page_navigator.process(data)
+            data["lens_tokens"] = lens_tokens
+            data["lens_time_sec"] = time.time() - start
         data["lens_prediction"] = lens_majority_answer(data, self.exp_config.phase1_candidate_num)
         score_prefixes = []
 
@@ -390,11 +434,19 @@ class CDCDocLensProcessor(DocLensProcessor):
                 data["final_tokens"] = lens_tokens + judge_tokens + res.tokens
                 score_prefixes = ["final_"]
             else:  # analyze: run every path so any threshold can be simulated offline
-                abstain, correct, doclens = await asyncio.gather(
-                    self._abstain_path(data),
-                    self._correct_path(data, report),
-                    self._doclens_path(data),
-                )
+                reused = self._reused_doclens(prev)
+                # With no flagged page the correction path IS the DocLens Reasoning Module on the
+                # original evidence (same prompts, same content), so it is not run a second time.
+                need_correct = bool(report.low_confidence_pages)
+                paths = [self._abstain_path(data),
+                         self._doclens_path(data) if reused is None else self._ready(reused)]
+                if need_correct:
+                    paths.append(self._correct_path(data, report))
+                results = await asyncio.gather(*paths)
+                abstain, doclens = results[0], results[1]
+                correct = results[2] if need_correct else doclens
+                data["doclens_reused"] = reused is not None
+                data["correct_is_doclens"] = not need_correct
                 self._store(data, "abstain_", abstain)
                 self._store(data, "correct_", correct)
                 self._store(data, "doclens_", doclens)
