@@ -562,6 +562,7 @@ def test_qwen_call_retries_with_smaller_images_and_tiles(monkeypatch):
     fake = _FakeQwen(fail_first_with="The decoder prompt (length 90000) is longer than the maximum model length of 65536.")
     monkeypatch.setitem(qwen_local._state, "client", fake)
     monkeypatch.setitem(qwen_local._state, "max_images", 8)
+    monkeypatch.setitem(qwen_local._state, "sem", None)
     buf = _io.BytesIO()
     Image.new("RGB", (400, 600), "white").save(buf, format="JPEG")
     img = {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg",
@@ -713,3 +714,34 @@ def test_report_has_paired_bootstrap(tmp_path):
                     str(tmp_path / "rep"), "--dev_frac", "0", "--tau", "0.7"], check=True, capture_output=True)
     text = (tmp_path / "rep" / "report.md").read_text()
     assert "CDC vs DocLens (paired bootstrap" in text and "+75.0 points" in text
+
+
+@requires_doclens
+def test_qwen_requests_are_admitted_a_few_at_a_time(monkeypatch):
+    from cdc import qwen_local
+
+    live, peak = 0, 0
+    fake = _FakeQwen()
+    inner = fake.chat.completions.create
+
+    async def slow_create(**kw):
+        nonlocal live, peak
+        live += 1
+        peak = max(peak, live)
+        await asyncio.sleep(0.01)
+        live -= 1
+        return await inner(**kw)
+
+    fake.chat.completions.create = slow_create
+    monkeypatch.setitem(qwen_local._state, "client", fake)
+    monkeypatch.setitem(qwen_local._state, "parallel", 2)
+    monkeypatch.setitem(qwen_local._state, "sem", None)
+    cfg = {"system_prompt": "s", "temperature": 0.7, "candidate_num": 2, "max_output_tokens": 100}
+
+    async def many():
+        return await asyncio.gather(*[qwen_local.call_qwen("q", [{"type": "text", "text": "x"}], cfg)
+                                      for _ in range(7)])
+
+    results = asyncio.run(many())
+    assert len(results) == 7 and all(len(t) == 2 for t, _ in results)
+    assert peak == 2
