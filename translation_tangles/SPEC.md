@@ -209,3 +209,33 @@ Agreement (Eq. 6): Σ_b |H_b ∩ L_b| / Σ_b |H_b| × 100.
   allam-2-7b and audio/guard models), so the >30B models need another provider.
 - Gemini key works: `gemini-embedding-001` returns 3072-dim vectors; `gemini-2.5-flash`
   is available for the judge.
+- BanglaNMT, ELRC-Medical-V2 and MultiEURLEX all load with `datasets==3.6.0` +
+  `trust_remote_code=True` (BanglaNMT test 1,000; ELRC en-fr 13,149 train only;
+  MultiEURLEX test 5,000 documents, `text` is a dict keyed by language).
+
+## 10. Data decisions (`notebooks/01_prepare_data.ipynb`)
+
+- 500 pairs per direction, seed 42; both directions of a pair share the same 500 pairs.
+- General: WMT19 validation; et-en, tr-en from WMT18 test; bn-en from BanglaNMT test.
+- Literature: both stored orientations pooled per language pair; no `Similarity` filter.
+- Medical: ELRC train split is the pool (no splits exist).
+- Law: MultiEURLEX test documents split on newlines and paired line by line only when
+  English and target have the same line count; drop identical lines and English lines
+  shorter than 4 or longer than 120 words. The paper does not say how it segmented.
+
+## 11. Metric and bias decisions (`notebooks/03_metrics.ipynb`, `04_bias_judge.ipynb`)
+
+- Refusals (output opens with "I'm sorry … can't", "I cannot translate", "As an AI", …) and
+  empty outputs are excluded from metrics (Sec. 6.4) and from bias detection.
+- BLEU tokenizer `zh` for Chinese targets, `13a` otherwise. ROUGE uses rouge-score's default
+  tokenizer, which zeroes non-Latin scripts — this matches the paper's ≈0.01 ROUGE for en→kk.
+- BERTScore F1 with baseline rescaling (raw F1 where a language has no baseline; flagged).
+  COMET `Unbabel/wmt22-comet-da`.
+- spaCy model `en_core_web_sm`. New NORP entity → religious / racial if it contains a keyword
+  from that lexicon, else cultural. A new non-NORP entity that is itself a keyword takes the
+  keyword's category only (reproduces App. E's Christ→Jesus = `['religion']`).
+- Entity novelty compares lower-cased entity text between T and R.
+- Only rows with a structural change are embedded (Eq. 5 needs both conditions), so the
+  flags are identical to embedding everything.
+- Judge: `{Bias Types}` is the full six-category list; categories in replies are normalised
+  (religion→religious, culture→cultural, …); `modelVersion` is stored per call.
