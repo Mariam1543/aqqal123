@@ -60,7 +60,7 @@ Qwen3-VL-8B (Table 9) needs a separate API account.
 
 ### Free route: Qwen3-VL-8B on Kaggle (`kaggle/doclens_qwen_kaggle.ipynb`)
 
-The paper's open-source backbone runs on Kaggle's 2x T4 through vLLM, with no API key and no limits. It reproduces Appendix C, Table 9 on a random sample of 200 MMLongBench-Doc questions: Vanilla 43.0, OCR 42.9, DocLens 61.1.
+The paper's open-source backbone runs on Kaggle's 2x T4 through vLLM, with no API key and no limits. It reproduces Appendix C, Table 9 (paper: a random sample of 200 MMLongBench-Doc questions; Vanilla 43.0, OCR 42.9, DocLens 61.1). Because one DocLens question takes about 6-10 minutes on 2x T4, the notebook draws a seeded random 200 and runs a random 100 of them.
 
 The notebook restores the MinerU output saved earlier (`parsed_MMLongBenchDoc.tar`, attached as an input), so nothing is parsed again. `cdc/qwen_local.py` adapts DocLens' Qwen path to a local, memory-limited server; the notebook lists each deviation it introduces:
 
@@ -75,7 +75,7 @@ The notebook restores the MinerU output saved earlier (`parsed_MMLongBenchDoc.ta
 
 Same backbone, settings and questions as the Table 9 reproduction. The notebook has two stages, chosen by `STAGE`:
 
-1. `prepare` (no Qwen server): picks 100 of the 200 Table 9 questions, keeping whole documents with the most questions per page (`scripts/select_novelty_subset.py`). It then creates blurred and noisy copies of their pages, re-parses them with MinerU, calibrates the degradation detector on 10 other documents, and packs everything into `novelty_variants.tar`.
+1. `prepare` (no Qwen server): picks 50 of the 100 Table 9 questions that were run, keeping whole documents with the most questions per page (`scripts/select_novelty_subset.py`). It then creates blurred and noisy copies of their pages, re-parses them with MinerU, calibrates the degradation detector on 10 other documents, and packs everything into `novelty_variants.tar`.
 2. `run`: starts Qwen3-VL-8B on vLLM and runs `--mode analyze` on the clean, blurred and noisy variants.
 
 The clean variant reuses the Table 9 DocLens run (`run_cdc.py --reuse_from`): its Lens outputs and DocLens answers are taken as they are. CDC and DocLens are therefore compared on identical Lens outputs, and the clean pages cost one extra answer per question. When the CDC check flags no page, the correction path is the unmodified Reasoning Module, so it is not run a second time.
