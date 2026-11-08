@@ -71,6 +71,21 @@ The notebook restores the MinerU output saved earlier (`parsed_MMLongBenchDoc.ta
 
 ## Step 2: the novelty
 
+### Agreement gate around the Adjudicator (A1, current plan, no extra GPU run)
+DocLens samples k = 8 answers and always runs the Adjudicator. The gate returns the majority answer when the
+sampled answers agree (agreement >= tau) and runs the Adjudicator only otherwise. It is evaluated offline on
+the Table 9 DocLens run (`kaggle/doclens_qwen_kaggle.ipynb`): `--mode doclens` now stores each sampled
+answer's score and the Adjudicator's token count (records from older runs are scored when the run resumes),
+and section 7b of the notebook writes `gate_report.md`:
+
+    python scripts/analyze_gate.py results_qwen/MMLongBenchDoc/qwen_doclens.jsonl --out gate_report.md
+
+It compares A1 with B1 (always Adjudicator = DocLens) and B2 (majority vote): accuracy, over-correction rate
+(majority right, returned answer wrong), fix rate, Adjudicator rate and tokens; tau is swept and also chosen
+by 5-fold cross-validation, with a paired bootstrap against B1 and B2.
+
+The degradation-based CDC below (blur/noise variants) is kept for reference.
+
 ### With Qwen3-VL-8B (`kaggle/doclens_cdc_qwen_kaggle.ipynb`, the free route)
 
 Same backbone, settings and questions as the Table 9 reproduction. The notebook has two stages, chosen by `STAGE`:

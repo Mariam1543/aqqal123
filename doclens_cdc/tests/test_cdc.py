@@ -640,7 +640,9 @@ def test_run_cdc_cli_with_local_qwen(tmp_path, monkeypatch):
     assert rec["final_prediction"] == "42" and rec["final_score"] == 1.0
     assert rec["doclens_cand8_prediction"] == "42"
     systems = [r["messages"][0]["content"] for r in fake.requests]
-    assert sum("Extracted answer" in s for s in systems) == 2  # final_ and doclens_first_ scored on Qwen
+    # final_, doclens_first_ and the one distinct sampled answer scored on Qwen
+    assert sum("Extracted answer" in s for s in systems) == 3
+    assert rec["doclens_cand8_score"] == 1.0
 
 
 @requires_doclens
@@ -745,3 +747,83 @@ def test_qwen_requests_are_admitted_a_few_at_a_time(monkeypatch):
     results = asyncio.run(many())
     assert len(results) == 7 and all(len(t) == 2 for t, _ in results)
     assert peak == 2
+
+
+@requires_doclens
+def test_doclens_scores_sampled_answers_and_backfills_old_records(tmp_path, monkeypatch):
+    _doc(tmp_path, [("clean", 0), ("clean", 0)])
+    calls = []
+    out_file = tmp_path / "res.jsonl"
+    proc = _make_processor(tmp_path, "doclens", calls, monkeypatch, output_jsonl=out_file)
+    scored = []
+    from utils import eval_toolkits
+    orig = eval_toolkits.get_score_for_response_mmlongbenchdoc
+
+    async def counting(sample, prefix):
+        scored.append(prefix)
+        return await orig(sample, prefix)
+
+    monkeypatch.setattr(eval_toolkits, "get_score_for_response_mmlongbenchdoc", counting)
+    r = asyncio.run(proc.process_single_document(_sample()))
+    assert r["doclens_cand1_score"] == r["doclens_cand2_score"] == 1.0
+    assert scored.count("__cand_") == 1  # equal answers are scored once
+    assert r["doclens_sampler_tokens"] + r["doclens_adjudicator_tokens"] == r["doclens_tokens"]
+
+    # a record written by an older version (no candidate scores) is scored on resume, file rewritten
+    old = {k: v for k, v in r.items() if not (k.startswith("doclens_cand") and k.endswith(("_score", "_extracted_pred")))}
+    out_file.write_text(json.dumps(old) + "\n" + json.dumps(old) + "\n")
+    calls.clear(); scored.clear()
+    res = asyncio.run(proc.process_documents_batch([_sample()], max_concurrent=2))
+    assert calls == [] and scored == ["__cand_"]  # nothing re-run, one extraction call
+    lines = [json.loads(l) for l in out_file.read_text().splitlines() if l.strip()]
+    assert len(lines) == 1 and lines[0]["doclens_cand2_score"] == 1.0 and res[0]["doclens_cand2_score"] == 1.0
+
+
+def _gate_record(i, preds, cand_scores, adj_score, adj_tokens=None):
+    r = {"doc_id": f"d{i}.pdf", "question": f"q{i}", "answer": "a", "final_score": adj_score,
+         "final_tokens": 1000.0, "doclens_prediction": "x", "doclens_analysis": "y"}
+    for j, (p, s) in enumerate(zip(preds, cand_scores), 1):
+        r[f"doclens_cand{j}_prediction"] = p
+        r[f"doclens_cand{j}_analysis"] = "z" * 50
+        r[f"doclens_cand{j}_score"] = s
+    if adj_tokens is not None:
+        r["doclens_adjudicator_tokens"] = adj_tokens
+    return r
+
+
+def test_agreement_gate_analysis(tmp_path):
+    sys.path.insert(0, str(PKG_ROOT / "scripts"))
+    from analyze_gate import evaluate, impute_adjudicator_tokens, load, pick_tau
+
+    recs = [
+        # unanimous and right; the Adjudicator overturns it (over-correction)
+        _gate_record(0, ["A", "a.", "A", "A"], [1, 1, 1, 1], 0.0, 200),
+        # split 2-2 (tie -> first sampled, wrong); the Adjudicator fixes it
+        _gate_record(1, ["B", "C", "B", "C"], [0, 1, 0, 1], 1.0, 200),
+        # 3 of 4 agree and right; the Adjudicator agrees
+        _gate_record(2, ["D", "D", "D", "E"], [1, 1, 1, 0], 1.0, 200),
+        # an older record without the token split; one sampled answer failed ("Error" is not a vote)
+        _gate_record(3, ["F", "Error", "F", "F"], [1, 0, 1, 1], 1.0),
+    ]
+    recs.append({k: v for k, v in _gate_record(4, ["G"] * 4, [1] * 4, 1.0).items() if not k.endswith("_score")
+                 or k == "final_score"})  # sampled answers not scored yet -> skipped
+    path = tmp_path / "r.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in recs))
+    rows, unscored = load([path])
+    assert unscored == 1 and len(rows) == 4
+    assert [r["agreement"] for r in rows] == [1.0, 0.5, 0.75, 1.0]
+    n, _ = impute_adjudicator_tokens(rows)
+    assert n == 1 and rows[3]["adj_tokens"] > 0
+
+    b1, b2 = evaluate(rows, None), evaluate(rows, 0.0)
+    assert b1["acc"] == 0.75 and b1["over"] == 0.25 and b1["fix"] == 0.25 and b1["adj_rate"] == 1.0
+    assert b2["acc"] == 0.75 and b2["over"] == 0 and b2["adj_rate"] == 0.0 and b2["tokens"] < b1["tokens"]
+    gate = evaluate(rows, 0.75)  # adjudicate only the 2-2 split
+    assert gate["acc"] == 1.0 and gate["over"] == 0 and gate["adj_rate"] == 0.25
+    assert pick_tau(rows) == 0.75
+
+    out = tmp_path / "gate.md"
+    subprocess.run([sys.executable, str(PKG_ROOT / "scripts/analyze_gate.py"), str(path), "--out", str(out)],
+                   check=True, capture_output=True)
+    text = out.read_text()
+    assert "A1: agreement gate" in text and "B2: majority vote" in text and "estimated" in text
