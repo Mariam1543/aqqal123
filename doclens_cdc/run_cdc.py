@@ -52,7 +52,7 @@ def parse_args():
                    help="Use a local OpenAI-compatible server (vLLM) serving Qwen3-VL-8B-Instruct, e.g. "
                         "http://localhost:8000/v1; model names must then start with 'qwen'")
     g.add_argument("--qwen_max_tokens", type=int, default=1536,
-                   help="Output-token cap per Qwen sample (DocLens answers are a few hundred tokens; on T4 a sample that
+                   help="Output-token cap per Qwen sample (DocLens answers are a few hundred tokens; on T4 a sample that "
                         "loops until a 4096 cap holds its whole 8-sample request for ~20 minutes)")
     g.add_argument("--qwen_timeout", type=float, default=0,
                    help="Seconds before a Qwen request is retried (0 = wait; queued requests on a busy server can take long)")
