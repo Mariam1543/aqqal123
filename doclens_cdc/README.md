@@ -60,7 +60,7 @@ Qwen3-VL-8B (Table 9) needs a separate API account.
 
 ### Free route: Qwen3-VL-8B on Kaggle (`kaggle/doclens_qwen_kaggle.ipynb`)
 
-The paper's open-source backbone runs on Kaggle's 2x T4 through vLLM, with no API key and no limits. It reproduces Appendix C, Table 9 (paper: a random sample of 200 MMLongBench-Doc questions; Vanilla 43.0, OCR 42.9, DocLens 61.1). Because one DocLens question takes about 6-10 minutes on 2x T4, the notebook draws a seeded random 200 and runs a random 100 of them.
+The paper's open-source backbone runs on Kaggle's 2x T4 through vLLM, with no API key and no limits. It reproduces Appendix C, Table 9 (paper: a random sample of 200 MMLongBench-Doc questions; Vanilla 43.0, OCR 42.9, DocLens 61.1). Because one DocLens question takes about 6-10 minutes on 2x T4, the notebook draws a seeded random 200 and splits it into two random halves (`PART = "A"` / `"B"`) that two accounts can run at the same time. A final run with `PART = "AB"` and both outputs attached merges them into the full 200.
 
 The notebook restores the MinerU output saved earlier (`parsed_MMLongBenchDoc.tar`, attached as an input), so nothing is parsed again. `cdc/qwen_local.py` adapts DocLens' Qwen path to a local, memory-limited server; the notebook lists each deviation it introduces:
 
