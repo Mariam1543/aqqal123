@@ -75,7 +75,7 @@ The notebook restores the MinerU output saved earlier (`parsed_MMLongBenchDoc.ta
 
 Same backbone, settings and questions as the Table 9 reproduction. The notebook has two stages, chosen by `STAGE`:
 
-1. `prepare` (no Qwen server): picks 50 of the 100 Table 9 questions that were run, keeping whole documents with the most questions per page (`scripts/select_novelty_subset.py`). It then creates blurred and noisy copies of their pages, re-parses them with MinerU, calibrates the degradation detector on 10 other documents, and packs everything into `novelty_variants.tar`.
+1. `prepare` (no Qwen server): picks 30 of the Part A Table 9 questions, keeping whole documents with the most questions per page (`scripts/select_novelty_subset.py`). It then creates blurred and noisy copies of their pages, re-parses them with MinerU, calibrates the degradation detector on 10 other documents, and packs everything into `novelty_variants.tar`.
 2. `run`: starts Qwen3-VL-8B on vLLM and runs `--mode analyze` on the clean, blurred and noisy variants.
 
 The clean variant reuses the Table 9 DocLens run (`run_cdc.py --reuse_from`): its Lens outputs and DocLens answers are taken as they are. CDC and DocLens are therefore compared on identical Lens outputs, and the clean pages cost one extra answer per question. When the CDC check flags no page, the correction path is the unmodified Reasoning Module, so it is not run a second time.
