@@ -28,6 +28,13 @@ sys.path.insert(0, str(PKG))
 from reproduction.experiments import EXPERIMENTS  # noqa: E402
 
 NA = "Not answerable"
+
+
+def is_na(x) -> bool:
+    """Unanswerable label, whatever its spelling/case in the samples file (e.g. "Not answerable",
+    "not answerable ", "Unanswerable")."""
+    t = " ".join(str(x).lower().replace("-", " ").split())
+    return t in {"not answerable", "unanswerable", "not answerable."}
 MML_SOURCES = {
     "TXT": "Pure-text (Plain-text)",
     "LAY": "Generalized-text (Layout)",
@@ -107,12 +114,12 @@ def metrics(rows, dataset):
     if dataset == "MMLongBenchDoc":
         for short, name in MML_SOURCES.items():
             out[short] = _mean(_score(r) for r in rows if name in _list(r.get("evidence_sources", "[]")))
-        out["UNA"] = _mean(_score(r) for r in rows if r["answer"] == NA)
-        out["ANS"] = _mean(_score(r) for r in rows if r["answer"] != NA)
+        out["UNA"] = _mean(_score(r) for r in rows if is_na(r["answer"]))
+        out["ANS"] = _mean(_score(r) for r in rows if not is_na(r["answer"]))
         # MMLongBench-Doc's official eval_acc_and_f1
         pred = lambda r: str(r.get("final_extracted_pred", r.get("final_prediction", ""))).strip()
-        answerable = [r for r in rows if r["answer"] != NA]
-        predicted = [r for r in rows if pred(r) != NA]
+        answerable = [r for r in rows if not is_na(r["answer"])]
+        predicted = [r for r in rows if not is_na(pred(r))]
         rec = sum(map(_score, answerable)) / len(answerable) if answerable else 0.0
         pre = sum(map(_score, answerable)) / len(predicted) if predicted else 0.0
         out["F1"] = 2 * rec * pre / (rec + pre) if rec + pre > 0 else 0.0
