@@ -257,3 +257,14 @@ directions 0.51 (raw) vs 1.00 (paper) vs 5.60 (chat). Raw mode reproduces the pa
 small-model regime; chat mode does not. Our raw outputs are somewhat longer than the paper's
 (de-en TER 1033 vs 764, WER 10.3 vs 7.7), consistent with the paper capping new tokens near
 256–300 instead of our 400; truncating our outputs to that cap would be equivalent.
+
+## 13. Table 1 cannot be recomputed from the paper's own Fig. 7 (`analysis/table1_from_paper.py`)
+
+Grouping the paper's per-direction BLEU (Fig. 7) by size and intra/cross family, under either
+reading of "intra-family" and either placement of Mixtral, never gives Table 1's numbers
+(e.g. large intra 22–37 vs 29.1) — and in every grouping the intra–cross gap **grows** with
+model size (small ≈0.6–4.0, medium ≈3.6–13.6, large ≈5.4–15.2), whereas the paper reports it
+shrinking (5.99 → 3.98). Either Table 1 used data or groupings not described in the paper, or
+the conclusion does not follow from the appendix. Fig. 7 values were transcribed from the image,
+so a few may be off, but not enough to reverse the trend. Our Table 1 will state its exact
+grouping and show the Fig. 7-derived numbers alongside.
