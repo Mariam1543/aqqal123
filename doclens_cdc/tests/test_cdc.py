@@ -827,3 +827,44 @@ def test_agreement_gate_analysis(tmp_path):
                    check=True, capture_output=True)
     text = out.read_text()
     assert "A1: agreement gate" in text and "B2: majority vote" in text and "estimated" in text
+
+
+@requires_doclens
+def test_rescore_fixes_short_and_list_answers(tmp_path):
+    sys.path.insert(0, str(PKG_ROOT / "scripts"))
+    from rescore import QwenExtractor, rescore_file
+    from utils import eval_toolkits
+
+    seen = []
+
+    async def fake_call(system, user):
+        seen.append(user)
+        if "FINAL ANSWER: White, 10 percentage points" in user:
+            return "Extracted answer: ['White', '10%']\nAnswer format: List"
+        return "Extracted answer: Not answerable\nAnswer format: String"  # the failure seen on Kaggle
+
+    rec = lambda q, ans, fmt, pred, **kw: {"doc_id": "d.pdf", "question": q, "answer": ans, "answer_format": fmt,
+                                           "final_prediction": pred, "final_score": 0.0,
+                                           "doclens_analysis": "because", "final_tokens": 10, **kw}
+    rows = [
+        rec("q1", "['White', '10%']", "List", "White, 10 percentage points",
+            doclens_cand1_prediction="White, 10 percentage points", doclens_cand1_analysis="a",
+            doclens_cand2_prediction="Hispanic", doclens_cand2_analysis="b"),
+        rec("q2", "6", "Int", "6"),                                  # short answer must not become "Not answerable"
+        rec("q3", "Not answerable", "None", "The document does not contain this information."),
+    ]
+    src = tmp_path / "in" / "qwen_doclens.jsonl"
+    src.parent.mkdir()
+    src.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    dst = tmp_path / "out" / "qwen_doclens.jsonl"
+    extractor = QwenExtractor(fake_call, "SYSTEM")
+    out = asyncio.run(rescore_file(src, dst, extractor, eval_toolkits.rule_based_eval_score_mmlongbenchdoc, "t"))
+    by_q = {r["question"]: r for r in out}
+    assert by_q["q1"]["final_score"] == 1.0 and by_q["q1"]["final_score_v1"] == 0.0
+    assert by_q["q1"]["doclens_cand1_score"] == 1.0 and by_q["q1"]["doclens_cand2_score"] == 0.0
+    assert by_q["q2"]["final_score"] == 1.0 and by_q["q2"]["final_extracted_pred"] == "6"
+    assert by_q["q3"]["final_score"] == 1.0  # a genuine "not answerable" answer stays "Not answerable"
+    assert "Analysis:because" in seen[0] or any("Analysis:because" in u for u in seen)
+    n_calls = len(seen)
+    asyncio.run(rescore_file(src, dst, extractor, eval_toolkits.rule_based_eval_score_mmlongbenchdoc, "t"))
+    assert len(seen) == n_calls  # resumed, nothing re-extracted
