@@ -54,6 +54,7 @@ from .confidence import (
     CORRECT,
     CDCConfig,
     CDCReport,
+    _norm_answer,
     build_report,
     correction_note,
     lens_consistency,
@@ -87,6 +88,7 @@ class PathResult:
     tokens: int
     seconds: float
     candidates: Optional[List[Dict[str, str]]] = None
+    token_parts: Optional[Dict[str, int]] = None  # e.g. {"sampler": .., "adjudicator": ..}
 
 
 def _user_prompt(question: str) -> str:
@@ -317,7 +319,7 @@ class CDCDocLensProcessor(DocLensProcessor):
         ]
         return PathResult(
             d.get("adjudicator_prediction", ""), d.get("adjudicator_analysis", ""), t1 + t2,
-            time.time() - start, cands,
+            time.time() - start, cands, {"sampler": t1, "adjudicator": t2},
         )
 
     # ------------------------------------------------------------------ #
@@ -353,6 +355,8 @@ class CDCDocLensProcessor(DocLensProcessor):
         data[f"{prefix}analysis"] = res.analysis
         data[f"{prefix}tokens"] = res.tokens
         data[f"{prefix}time_sec"] = res.seconds
+        for part, n in (res.token_parts or {}).items():
+            data[f"{prefix}{part}_tokens"] = n
         if res.candidates:
             for i, c in enumerate(res.candidates, 1):
                 data[f"{prefix}cand{i}_prediction"] = c["prediction"]
@@ -460,7 +464,43 @@ class CDCDocLensProcessor(DocLensProcessor):
 
         if self.evaluate and "answer" in data:
             await self._score(data, score_prefixes)
+            if self.mode == "doclens":
+                await self.score_candidates(data)
         return data
+
+    # ------------------------------------------------------------------ #
+    # Scores of the individual sampled answers (agreement gate around the Adjudicator)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def needs_candidate_scores(rec: dict, prefix: str = "doclens_") -> bool:
+        return (f"{prefix}cand1_prediction" in rec and f"{prefix}cand1_score" not in rec
+                and "answer" in rec and "cdc_error" not in rec)
+
+    async def score_candidates(self, data: dict, prefix: str = "doclens_") -> None:
+        """Score every sampled answer with the dataset's own protocol, so that majority voting and
+        an agreement gate around the Adjudicator can be evaluated offline. Answers that are equal
+        after normalisation are scored once."""
+        k = self.exp_config.phase2_candidate_num
+        preds = {i: str(data.get(f"{prefix}cand{i}_prediction", "")) for i in range(1, k + 1)
+                 if f"{prefix}cand{i}_prediction" in data}
+        groups: Dict[str, List[int]] = {}
+        for i, pred in preds.items():
+            norm = _norm_answer(pred)
+            if norm and norm != "error":
+                groups.setdefault(norm, []).append(i)
+
+        async def one(idxs):
+            tmp = dict(data)
+            tmp["__cand_prediction"] = preds[idxs[0]]
+            await self._score(tmp, ["__cand_"])
+            return idxs, tmp.get("__cand_score", 0.0), tmp.get("__cand_extracted_pred", "")
+
+        for i in preds:
+            data[f"{prefix}cand{i}_score"] = 0.0
+        for idxs, score, extracted in await asyncio.gather(*(one(v) for v in groups.values())):
+            for i in idxs:
+                data[f"{prefix}cand{i}_score"] = score
+                data[f"{prefix}cand{i}_extracted_pred"] = extracted
 
     async def _score(self, data: dict, prefixes: List[str]) -> None:
         """Score each prefix with DocLens' own evaluation protocol for the dataset."""
@@ -491,6 +531,32 @@ class CDCDocLensProcessor(DocLensProcessor):
     def sample_key(data: dict) -> str:
         return f"{data['doc_id']}||{data['question']}||{data.get('answer', '')}"
 
+    async def _backfill_candidate_scores(self, done: dict, max_concurrent: int) -> None:
+        """Records written before the sampled answers were scored get their scores now (a few
+        short text-only extraction calls each); the results file is then rewritten in place."""
+        todo = [r for r in done.values() if self.needs_candidate_scores(r)]
+        if not todo:
+            return
+        sem = asyncio.Semaphore(max(1, max_concurrent))
+
+        async def one(rec):
+            async with sem:
+                try:
+                    await self.score_candidates(rec)
+                except Exception as e:  # keep the record; it is retried on the next run
+                    for key in [k for k in rec if k.startswith("doclens_cand") and k.endswith("_score")]:
+                        del rec[key]
+                    print(f"Could not score the sampled answers of one question: {e!r}")
+
+        await asyncio.gather(*(one(r) for r in todo))
+        tmp = self.output_jsonl.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            for rec in done.values():
+                f.write(json.dumps(rec, ensure_ascii=False, default=str) + "\n")
+        tmp.replace(self.output_jsonl)
+        n = sum(not self.needs_candidate_scores(r) for r in todo)
+        print(f"Scored the sampled answers of {n}/{len(todo)} earlier questions")
+
     async def process_documents_batch(self, data_list, max_concurrent: int = 4):
         done = {}
         if self.output_jsonl and self.output_jsonl.exists():
@@ -500,6 +566,8 @@ class CDCDocLensProcessor(DocLensProcessor):
                     if "cdc_error" not in rec:
                         done[self.sample_key(rec)] = rec
             print(f"Resuming: {len(done)} questions already finished in {self.output_jsonl}")
+            if self.mode == "doclens" and self.evaluate:
+                await self._backfill_candidate_scores(done, max_concurrent)
         todo = [d for d in data_list if self.sample_key(d) not in done]
         results = list(done.values())
         semaphore = asyncio.Semaphore(max_concurrent)

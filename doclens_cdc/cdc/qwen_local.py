@@ -26,7 +26,7 @@ from PIL import Image
 
 SERVED_MODEL = "Qwen/Qwen3-VL-8B-Instruct"
 
-_state: Dict[str, Any] = {"client": None, "max_tokens": 4096, "max_images": 64}
+_state: Dict[str, Any] = {"client": None, "max_tokens": 4096, "max_images": 64, "parallel": 2, "sem": None}
 
 
 def _is_context_error(msg: str) -> bool:
@@ -98,6 +98,20 @@ async def call_qwen(model_name, contents, config, max_attempts=6, retry_delay=10
     n = config["candidate_num"]
     current = await generation_utils.resize_contents_images(contents, scale_factor=0.5)  # as DocLens
     current = tile_images(current, _state["max_images"])
+    # A T4 server holds only ~70k tokens of KV cache: more requests at once than fit make vLLM
+    # preempt and recompute them over and over, so requests are admitted a few at a time.
+    if _state["sem"] is None and _state["parallel"]:
+        _state["sem"] = asyncio.Semaphore(_state["parallel"])
+    if _state["sem"] is None:
+        return await _call_qwen(n, current, config, max_attempts, retry_delay, error_context)
+    async with _state["sem"]:
+        return await _call_qwen(n, current, config, max_attempts, retry_delay, error_context)
+
+
+async def _call_qwen(n, current, config, max_attempts, retry_delay, error_context):
+    from utils import generation_utils
+
+    client = _state["client"]
     texts: List[str] = []
     tokens = 0
     for attempt in range(max_attempts):
@@ -180,15 +194,17 @@ def chunked_navigator(chunk_pages: int):
 
 
 def configure_qwen(base_url: str, max_tokens: int = 4096, max_images: int = 64, nav_chunk_pages: int = 30,
-                   timeout: float = 1800):
+                   timeout: float = 0, parallel_requests: int = 2):
     import openai
     from agents import page_navigator_agent
     from utils import eval_toolkits, generation_utils
 
     _state["client"] = openai.AsyncOpenAI(base_url=base_url, api_key="EMPTY", max_retries=0,
-                                             timeout=timeout or None)  # a hung request is retried, not waited on forever
+                                             timeout=timeout or None)  # 0: no client timeout (time in the server queue counts)
     _state["max_tokens"] = max_tokens
     _state["max_images"] = max_images
+    _state["parallel"] = parallel_requests
+    _state["sem"] = None
     generation_utils.call_qwen_with_retry_async = call_qwen
     eval_toolkits.call_gemini_with_retry_async = eval_with_qwen
     if nav_chunk_pages and nav_chunk_pages > 0:

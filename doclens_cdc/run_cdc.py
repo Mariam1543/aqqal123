@@ -51,8 +51,14 @@ def parse_args():
     g.add_argument("--qwen_base_url", default=None,
                    help="Use a local OpenAI-compatible server (vLLM) serving Qwen3-VL-8B-Instruct, e.g. "
                         "http://localhost:8000/v1; model names must then start with 'qwen'")
-    g.add_argument("--qwen_max_tokens", type=int, default=4096, help="Output-token cap per Qwen request")
-    g.add_argument("--qwen_timeout", type=float, default=1800, help="Seconds before a Qwen request is retried")
+    g.add_argument("--qwen_max_tokens", type=int, default=1536,
+                   help="Output-token cap per Qwen sample (DocLens answers are a few hundred tokens; on T4 a sample that "
+                        "loops until a 4096 cap holds its whole 8-sample request for ~20 minutes)")
+    g.add_argument("--qwen_timeout", type=float, default=0,
+                   help="Seconds before a Qwen request is retried (0 = wait; queued requests on a busy server can take long)")
+    g.add_argument("--qwen_parallel_requests", type=int, default=2,
+                   help="Qwen requests sent to the server at once (each carries all k samples); more than the "
+                        "KV cache holds makes vLLM preempt and recompute (0 = no limit)")
     g.add_argument("--qwen_max_images", type=int, default=64, help="Images per request the server accepts")
     g.add_argument("--nav_chunk_pages", type=int, default=30,
                    help="With --qwen_base_url: Page Navigator chunk size in pages (paper: 50 for Claude)")
@@ -115,7 +121,7 @@ async def main():
         from cdc.qwen_local import configure_qwen
         configure_qwen(args.qwen_base_url, max_tokens=args.qwen_max_tokens,
                        max_images=args.qwen_max_images, nav_chunk_pages=args.nav_chunk_pages,
-                       timeout=args.qwen_timeout)
+                       timeout=args.qwen_timeout, parallel_requests=args.qwen_parallel_requests)
     elif args.use_vertex:
         project = os.environ.get("GOOGLE_CLOUD_PROJECT")
         if not project:

@@ -60,7 +60,7 @@ Qwen3-VL-8B (Table 9) needs a separate API account.
 
 ### Free route: Qwen3-VL-8B on Kaggle (`kaggle/doclens_qwen_kaggle.ipynb`)
 
-The paper's open-source backbone runs on Kaggle's 2x T4 through vLLM, with no API key and no limits. It reproduces Appendix C, Table 9 on a random sample of 200 MMLongBench-Doc questions: Vanilla 43.0, OCR 42.9, DocLens 61.1.
+The paper's open-source backbone runs on Kaggle's 2x T4 through vLLM, with no API key and no limits. It reproduces Appendix C, Table 9 (paper: a random sample of 200 MMLongBench-Doc questions; Vanilla 43.0, OCR 42.9, DocLens 61.1). Because one DocLens question takes about 6-10 minutes on 2x T4, the notebook draws a seeded random 200 and splits it into two random halves (`PART = "A"` / `"B"`) that two accounts can run at the same time. A final run with `PART = "AB"` and both outputs attached merges them into the full 200.
 
 The notebook restores the MinerU output saved earlier (`parsed_MMLongBenchDoc.tar`, attached as an input), so nothing is parsed again. `cdc/qwen_local.py` adapts DocLens' Qwen path to a local, memory-limited server; the notebook lists each deviation it introduces:
 
@@ -71,11 +71,26 @@ The notebook restores the MinerU output saved earlier (`parsed_MMLongBenchDoc.ta
 
 ## Step 2: the novelty
 
+### Agreement gate around the Adjudicator (A1, current plan, no extra GPU run)
+DocLens samples k = 8 answers and always runs the Adjudicator. The gate returns the majority answer when the
+sampled answers agree (agreement >= tau) and runs the Adjudicator only otherwise. It is evaluated offline on
+the Table 9 DocLens run (`kaggle/doclens_qwen_kaggle.ipynb`): `--mode doclens` now stores each sampled
+answer's score and the Adjudicator's token count (records from older runs are scored when the run resumes),
+and section 7b of the notebook writes `gate_report.md`:
+
+    python scripts/analyze_gate.py results_qwen/MMLongBenchDoc/qwen_doclens.jsonl --out gate_report.md
+
+It compares A1 with B1 (always Adjudicator = DocLens) and B2 (majority vote): accuracy, over-correction rate
+(majority right, returned answer wrong), fix rate, Adjudicator rate and tokens; tau is swept and also chosen
+by 5-fold cross-validation, with a paired bootstrap against B1 and B2.
+
+The degradation-based CDC below (blur/noise variants) is kept for reference.
+
 ### With Qwen3-VL-8B (`kaggle/doclens_cdc_qwen_kaggle.ipynb`, the free route)
 
 Same backbone, settings and questions as the Table 9 reproduction. The notebook has two stages, chosen by `STAGE`:
 
-1. `prepare` (no Qwen server): picks 100 of the 200 Table 9 questions, keeping whole documents with the most questions per page (`scripts/select_novelty_subset.py`). It then creates blurred and noisy copies of their pages, re-parses them with MinerU, calibrates the degradation detector on 10 other documents, and packs everything into `novelty_variants.tar`.
+1. `prepare` (no Qwen server): picks 30 of the Part A Table 9 questions, keeping whole documents with the most questions per page (`scripts/select_novelty_subset.py`). It then creates blurred and noisy copies of their pages, re-parses them with MinerU, calibrates the degradation detector on 10 other documents, and packs everything into `novelty_variants.tar`.
 2. `run`: starts Qwen3-VL-8B on vLLM and runs `--mode analyze` on the clean, blurred and noisy variants.
 
 The clean variant reuses the Table 9 DocLens run (`run_cdc.py --reuse_from`): its Lens outputs and DocLens answers are taken as they are. CDC and DocLens are therefore compared on identical Lens outputs, and the clean pages cost one extra answer per question. When the CDC check flags no page, the correction path is the unmodified Reasoning Module, so it is not run a second time.
