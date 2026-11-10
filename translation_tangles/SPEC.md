@@ -268,3 +268,11 @@ shrinking (5.99 → 3.98). Either Table 1 used data or groupings not described i
 the conclusion does not follow from the appendix. Fig. 7 values were transcribed from the image,
 so a few may be off, but not enough to reverse the trend. Our Table 1 will state its exact
 grouping and show the Fig. 7-derived numbers alongside.
+
+Qwen family in raw mode (mean BLEU over 24 directions, paper vs ours):
+0.5B 1.01 vs 0.58, 1.5B 1.45 vs 1.26, 3B 2.31 vs 3.39. Qwen2.5-3B usually ends its answer with
+an end-of-text token after the translation in X→en, so its X→en outputs are clean and score
+well above the paper (de-en 15.1 vs 4.9, TER 195 vs 622); its en→X scores match closely
+(en-de 2.78 vs 2.77, en-ru 2.41 vs 2.43, en-fi 0.43 vs 0.43). The paper's 3B outputs were
+evidently still long in X→en, which would happen if generation did not stop at that token;
+the paper does not say. The small-vs-medium gap is unaffected either way.
