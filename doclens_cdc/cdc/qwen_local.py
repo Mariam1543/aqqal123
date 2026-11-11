@@ -78,6 +78,19 @@ def tile_images(contents: List[dict], max_images: int) -> List[dict]:
     return tile_images(out, max_images)
 
 
+def shorten_texts(contents: List[dict], keep: float = 0.75, min_chars: int = 2000) -> List[dict]:
+    """Cut every text part longer than `min_chars` to `keep` of its length (head and tail kept)."""
+    out = []
+    for c in contents:
+        t = c.get("text") if c.get("type") == "text" else None
+        if t and len(t) > min_chars:
+            n = int(len(t) * keep)
+            head, tail = n * 2 // 3, n - n * 2 // 3
+            c = {**c, "text": t[:head] + "\n[...]\n" + t[len(t) - tail:]}
+        out.append(c)
+    return out
+
+
 def _to_openai_parts(contents: List[dict]) -> List[dict]:
     parts = []
     for item in contents:
@@ -133,6 +146,10 @@ async def _call_qwen(n, current, config, max_attempts, retry_delay, error_contex
             print(f"Qwen attempt {attempt + 1} failed{(' for ' + error_context) if error_context else ''}: {msg[:300]}")
             if _is_context_error(msg):
                 current = await generation_utils.resize_contents_images(current, scale_factor=0.5)
+                # Text-heavy prompts (long OCR pages, long sampled analyses) do not shrink with the
+                # images: from the second overflow on, also cut the longest text parts.
+                if attempt >= 1:
+                    current = shorten_texts(current)
                 continue
             await asyncio.sleep(retry_delay)
     return texts + ["Error"] * (n - len(texts)), tokens

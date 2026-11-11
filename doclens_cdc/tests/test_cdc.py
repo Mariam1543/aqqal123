@@ -868,3 +868,15 @@ def test_rescore_fixes_short_and_list_answers(tmp_path):
     n_calls = len(seen)
     asyncio.run(rescore_file(src, dst, extractor, eval_toolkits.rule_based_eval_score_mmlongbenchdoc, "t"))
     assert len(seen) == n_calls  # resumed, nothing re-extracted
+
+
+def test_shorten_texts_cuts_only_long_text_parts():
+    from cdc.qwen_local import shorten_texts
+
+    long = "a" * 3000 + "END"
+    parts = [{"type": "text", "text": "short"}, {"type": "text", "text": long},
+             {"type": "image", "source": {"type": "base64", "data": "xx"}}]
+    out = shorten_texts(parts)
+    assert out[0]["text"] == "short"
+    assert len(out[1]["text"]) < len(long) * 0.8 and out[1]["text"].endswith("END")
+    assert out[2] == parts[2]
