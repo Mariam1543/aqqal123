@@ -285,3 +285,12 @@ Scored as-is: mean BLEU 10.2 vs paper 14.7, de-en 25.5 vs 32.7, TER 81 vs 56. Wi
 The paper's chat outputs carry no such opener (App. E) but do keep trailing remarks, so for
 chat-mode rows only the opener is removed; trailing text is kept and raw-mode rows are untouched.
 The same text feeds the bias detector. Earlier chat results were re-scored with this rule.
+
+## 15. OLMo-1B does not match (`results/fast_metrics_olmo-1b.json`)
+
+`allenai/OLMo-1B-hf` (2024 base model, raw mode; vLLM failed to load it, so the transformers
+fallback ran) scores mean BLEU 0.21 vs the paper's 2.35, de-en 1.35 vs 6.75, TER 1295 vs 366:
+our base model never stops and fills all 400 tokens, while the paper's outputs were about 3.7×
+the reference length. The paper cites the 2025 OLMo report, so its "OLMo-1B" may be the OLMo-2
+1B Instruct model, which can end its answer. `olmo2-1b` (`allenai/OLMo-2-0425-1B-Instruct`, raw)
+is in the registry to test this.

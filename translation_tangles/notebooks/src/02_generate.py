@@ -52,6 +52,9 @@ REGISTRY = {
     "qwen2.5-1.5b": dict(hf="Qwen/Qwen2.5-1.5B-Instruct", size="small", suites=GEN, prompt="raw"),
     "qwen2.5-3b": dict(hf="Qwen/Qwen2.5-3B-Instruct", size="small", suites=GEN, prompt="raw"),
     "olmo-1b": dict(hf="allenai/OLMo-1B-hf", size="small", suites=GEN, prompt="raw"),
+    # The paper cites the 2025 OLMo report; its 1B model may be OLMo-2 1B Instruct rather than the
+    # 2024 base model. Run this too: the 2024 base model scores far below the paper (see SPEC §15).
+    "olmo2-1b": dict(hf="allenai/OLMo-2-0425-1B-Instruct", size="small", suites=GEN, prompt="raw"),
     "phi-3.5-mini": dict(hf="microsoft/Phi-3.5-mini-instruct", size="small", suites=GEN, prompt="raw"),
     "llama-3.2-1b": dict(hf="meta-llama/Llama-3.2-1B-Instruct", size="small", suites=GEN),   # not in the tables
     # medium (7-30B)
