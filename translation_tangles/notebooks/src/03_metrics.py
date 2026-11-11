@@ -50,7 +50,16 @@ todo = {k: v for k, v in files.items() if k not in done}
 print("To score:", len(todo))
 
 # %% [markdown]
-# ## Refusal filter
+# ## Chat preamble, refusal filter
+#
+# Chat-mode models often open with a line like "Sure, here is the translation:" before the
+# translation. The paper's chat outputs show no such opener (App. E: Gemma-2-9B's output starts
+# with the translation and keeps its trailing remark), and with the opener left in, Gemma-7B scores
+# far below the paper (de-en BLEU 25.5 vs 32.7; stripped: 33.2). So for **chat-mode** rows only, one
+# leading "Sure / Here is … translation …:" line and quotes wrapping the whole answer are removed.
+# Trailing remarks are kept. Raw-mode rows are scored exactly as generated.
+#
+# **Refusals**
 #
 # A row is dropped when the output is empty or opens with a refusal / safety disclaimer
 # instead of a translation (the paper's App. E example is "I'm sorry, I can't provide a direct
@@ -70,6 +79,19 @@ REFUSAL = [
 def is_refusal(text):
     head = text.strip()[:200]
     return not head or any(p.match(head) for p in REFUSAL)
+
+PREAMBLE = re.compile(r"^\s*(sure[,!.]?\s*)?(here\s+is|here's|this\s+is)\b[^\n]{0,120}?"
+                      r"(translation|translated)[^\n]*:\s*\n+", re.I)
+
+def strip_preamble(text):
+    text = PREAMBLE.sub("", text, count=1).strip()
+    if len(text) > 1 and text[0] in "\"“" and text[-1] in "\"”":
+        text = text[1:-1].strip()
+    return text
+
+def scored_output(row):
+    """The text that is scored: chat-mode preamble removed, raw-mode untouched."""
+    return strip_preamble(row["output"]) if row.get("prompt_mode", "chat") == "chat" else row["output"]
 
 # %% [markdown]
 # ## Fast metrics
@@ -100,6 +122,8 @@ rows, kept = [], {}
 for (model, suite, direction), path in sorted(todo.items()):
     data = [json.loads(l) for l in open(path, encoding="utf-8")]
     use = [d for d in data if not is_refusal(d["output"])]
+    for d in use:
+        d["scored"] = scored_output(d)
     src, tgt = direction.split("-")
     row = {"model": model, "suite": suite, "direction": direction, "src": src, "tgt": tgt,
            "n_total": len(data), "n_refused": len(data) - len(use),
@@ -107,7 +131,8 @@ for (model, suite, direction), path in sorted(todo.items()):
            "n_hit_max_tokens": sum(d.get("finish_reason") == "length" for d in data),
            "backend": data[0].get("backend") if data else None}
     if use:
-        row.update(fast_metrics([d["output"] for d in use], [d["reference"] for d in use], tgt))
+        row.update(fast_metrics([d["scored"] for d in use], [d["reference"] for d in use], tgt))
+    row["n_preamble_stripped"] = sum(d["scored"] != d["output"] for d in use)
     rows.append(row)
     kept[(model, suite, direction)] = use
     print(f"{model:24s} {suite:10s} {direction}: BLEU {row.get('bleu', float('nan')):6.2f}  "
@@ -140,7 +165,7 @@ if RUN_NEURAL and len(df):
         for i in idx:
             r = df.loc[i]
             use = kept[(r.model, r.suite, r.direction)]
-            _, _, f1 = scorer.score([d["output"] for d in use], [d["reference"] for d in use], batch_size=64)
+            _, _, f1 = scorer.score([d["scored"] for d in use], [d["reference"] for d in use], batch_size=64)
             df.at[i, "bertscore"], df.at[i, "bertscore_rescaled"] = f1.mean().item(), rescaled
         print(f"BERTScore done for target {tgt} ({len(idx)} directions)")
         del scorer
@@ -153,7 +178,7 @@ if RUN_NEURAL and len(df):
             use = kept[(r.model, r.suite, r.direction)]
             if not use:
                 continue
-            out = comet.predict([{"src": d["source"], "mt": d["output"], "ref": d["reference"]} for d in use],
+            out = comet.predict([{"src": d["source"], "mt": d["scored"], "ref": d["reference"]} for d in use],
                                 batch_size=64, gpus=1, progress_bar=False)
             df.at[i, "comet"] = out.system_score
         print("COMET done")

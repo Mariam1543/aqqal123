@@ -276,3 +276,12 @@ well above the paper (de-en 15.1 vs 4.9, TER 195 vs 622); its en→X scores matc
 (en-de 2.78 vs 2.77, en-ru 2.41 vs 2.43, en-fi 0.43 vs 0.43). The paper's 3B outputs were
 evidently still long in X→en, which would happen if generation did not stop at that token;
 the paper does not say. The small-vs-medium gap is unaffected either way.
+
+## 14. Chat preamble removed before scoring (`03_metrics`, `04_bias_judge`, `analysis/score_local.py`)
+
+Gemma-7B (chat mode) opened 489/500 de-en outputs with "Sure, here is the translation:".
+Scored as-is: mean BLEU 10.2 vs paper 14.7, de-en 25.5 vs 32.7, TER 81 vs 56. With one leading
+"Sure / Here is … translation …:" line and whole-answer quotes removed: de-en 33.2, mean 13.1.
+The paper's chat outputs carry no such opener (App. E) but do keep trailing remarks, so for
+chat-mode rows only the opener is removed; trailing text is kept and raw-mode rows are untouched.
+The same text feeds the bias detector. Earlier chat results were re-scored with this rule.

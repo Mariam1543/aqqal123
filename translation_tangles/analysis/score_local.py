@@ -20,7 +20,7 @@ _ns = {"re": re, "sacrebleu": sacrebleu, "jiwer": jiwer, "rouge_scorer": rouge_s
 exec(next(c for c in _code if "REFUSAL = [" in c), _ns)
 _fast = next(c for c in _code if "def fast_metrics" in c)
 exec(_fast[:_fast.index("rows, kept")], _ns)
-is_refusal, fast_metrics = _ns["is_refusal"], _ns["fast_metrics"]
+is_refusal, fast_metrics, scored_output = _ns["is_refusal"], _ns["fast_metrics"], _ns["scored_output"]
 
 
 def score_run(run_dir, results_path):
@@ -31,9 +31,11 @@ def score_run(run_dir, results_path):
             continue
         rows = [json.loads(l) for l in open(path, encoding="utf-8")]
         use = [r for r in rows if not is_refusal(r["output"])]
-        m = fast_metrics([r["output"] for r in use], [r["reference"] for r in use], path.stem.split("-")[1])
+        scored = [scored_output(r) for r in use]
+        m = fast_metrics(scored, [r["reference"] for r in use], path.stem.split("-")[1])
         m.update(n_total=len(rows), n_refused=len(rows) - len(use),
                  n_hit_max_tokens=sum(r.get("finish_reason") == "length" for r in rows),
+                 n_preamble_stripped=sum(t != r["output"] for t, r in zip(scored, use)),
                  prompt_mode=rows[0].get("prompt_mode") if rows else None)
         results[key] = m
         json.dump(results, open(results_path, "w"), indent=1)

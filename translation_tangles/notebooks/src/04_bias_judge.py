@@ -127,7 +127,7 @@ def ner_hits(doc_t, doc_r):
         hits.append({"bias": b, "entity": e.text, "label": e.label_})
     return hits
 
-# Same refusal filter as 03_metrics: refusals carry no translation to analyse
+# Same refusal filter and chat-preamble removal as 03_metrics
 CANT = r"(can(no|')t|cannot|am unable to|'m unable to|won'?t|am not able to|'m not able to|must decline to)"
 TASK = r"(provide|translate|help|assist|fulfil|comply|complete|create|generate|do that|process|produce)"
 REFUSAL = [
@@ -139,6 +139,15 @@ REFUSAL = [
 def is_refusal(text):
     head = text.strip()[:200]
     return not head or any(p.match(head) for p in REFUSAL)
+
+PREAMBLE = re.compile(r"^\s*(sure[,!.]?\s*)?(here\s+is|here's|this\s+is)\b[^\n]{0,120}?"
+                      r"(translation|translated)[^\n]*:\s*\n+", re.I)
+
+def strip_preamble(text):
+    text = PREAMBLE.sub("", text, count=1).strip()
+    if len(text) > 1 and text[0] in "\"“" and text[-1] in "\"”":
+        text = text[1:-1].strip()
+    return text
 
 # %% [markdown]
 # ## Load X→English outputs and run the structural checks
@@ -157,6 +166,8 @@ def load_rows(pattern="/kaggle/input/**/outputs/*/general/*-en.jsonl"):
 def structural(rows):
     """Adds kw_hits, ner_hits and categories to each usable row; returns (usable, refused_count)."""
     usable = [r for r in rows if not is_refusal(r["output"])]
+    for r in usable:   # same text the metrics score (03_metrics: chat preamble removed)
+        r["output"] = strip_preamble(r["output"]) if r.get("prompt_mode", "chat") == "chat" else r["output"]
     docs_t = nlp.pipe([r["output"] for r in usable], batch_size=256)
     docs_r = nlp.pipe([r["reference"] for r in usable], batch_size=256)
     for r, dt, dr in zip(usable, docs_t, docs_r):
