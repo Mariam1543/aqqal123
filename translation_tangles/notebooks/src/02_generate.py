@@ -23,6 +23,9 @@ SMOKE = True             # True: 5 sentences x 2 directions, printed, not saved 
 BACKEND = "auto"         # "vllm", "hf" (transformers), or "auto" (try vLLM, fall back to hf)
 SUITES = None            # None = the suites the paper ran this model on; or e.g. ["general"]
 PROMPT_MODE = None       # None = the model's default below; "chat" or "raw" to override (saved under <model>@<mode>)
+MAX_NEW_TOKENS = None    # None = default (400, or 2048 for reasoning models); a number to override
+IGNORE_EOS = False       # True = keep generating past the end-of-text token up to MAX_NEW_TOKENS
+# A non-default MAX_NEW_TOKENS or IGNORE_EOS is added to the run name, e.g. olmo2-1b@noeos256
 
 # %% [markdown]
 # ## Model registry
@@ -85,7 +88,9 @@ MODE = PROMPT_MODE or cfg.get("prompt", "chat")
 RAW = MODE == "raw"
 RUN_NAME = MODEL if MODE == cfg.get("prompt", "chat") else f"{MODEL}@{MODE}"
 MAX_MODEL_LEN = 6144 if REASONING else 4096
-MAX_NEW = 2048 if REASONING else 400
+MAX_NEW = MAX_NEW_TOKENS or (2048 if REASONING else 400)
+if IGNORE_EOS or MAX_NEW_TOKENS:
+    RUN_NAME += "@" + ("noeos" if IGNORE_EOS else "max") + str(MAX_NEW)
 INPUT_LIMIT = MAX_MODEL_LEN - max(500, MAX_NEW + 100)   # App. A.1: reserve room for prompt + response
 TEMPERATURE, SEED, HF_BATCH = 0.1, 42, 16
 print(RUN_NAME, cfg, "| prompt mode:", MODE, "| suites:", suites)
@@ -207,7 +212,7 @@ def clean(text):
 def generate(id_lists):
     """Returns (raw_text, finish_reason) per prompt, in input order."""
     if backend == "vllm":
-        sp = SamplingParams(temperature=TEMPERATURE, max_tokens=MAX_NEW, seed=SEED)
+        sp = SamplingParams(temperature=TEMPERATURE, max_tokens=MAX_NEW, seed=SEED, ignore_eos=IGNORE_EOS)
         outs = llm.generate([{"prompt_token_ids": ids} for ids in id_lists], sp, use_tqdm=False)
         return [(o.outputs[0].text, o.outputs[0].finish_reason) for o in outs]
     results = [None] * len(id_lists)
@@ -216,8 +221,8 @@ def generate(id_lists):
         idx = order[start:start + HF_BATCH]
         enc = tok.pad({"input_ids": [id_lists[i] for i in idx]}, return_tensors="pt").to(model.device)
         with torch.no_grad():
-            gen = model.generate(**enc, do_sample=True, temperature=TEMPERATURE,
-                                 max_new_tokens=MAX_NEW, pad_token_id=tok.pad_token_id)
+            gen = model.generate(**enc, do_sample=True, temperature=TEMPERATURE, max_new_tokens=MAX_NEW,
+                                 min_new_tokens=MAX_NEW if IGNORE_EOS else None, pad_token_id=tok.pad_token_id)
         for j, i in enumerate(idx):
             new = gen[j, enc["input_ids"].shape[1]:]
             n = int((new != tok.pad_token_id).sum())
@@ -245,7 +250,7 @@ for path in directions:
     with open(dest, "w", encoding="utf-8") as f:
         for r, (ids, trunc), (raw, finish) in zip(rows, enc, outs):
             f.write(json.dumps({**r, "model": RUN_NAME, "hf_id": weights, "backend": backend,
-                                "prompt_mode": MODE,
+                                "prompt_mode": MODE, "max_new_tokens": MAX_NEW, "ignore_eos": IGNORE_EOS,
                                 "output": clean(raw), "raw_output": raw, "finish_reason": finish,
                                 "n_prompt_tokens": len(ids), "truncated": trunc}, ensure_ascii=False) + "\n")
     dt = time.time() - t0

@@ -294,3 +294,14 @@ our base model never stops and fills all 400 tokens, while the paper's outputs w
 the reference length. The paper cites the 2025 OLMo report, so its "OLMo-1B" may be the OLMo-2
 1B Instruct model, which can end its answer. `olmo2-1b` (`allenai/OLMo-2-0425-1B-Instruct`, raw)
 is in the registry to test this.
+
+OLMo-2 1B Instruct (`olmo2-1b`, raw, `results/fast_metrics_olmo2-1b.json`) overshoots instead:
+mean BLEU 8.46 vs paper 2.35, de-en 32.7 vs 6.75, TER 54 vs 366 — it ends its answer cleanly
+(0.9% of outputs reach the cap). So neither checkpoint as we run it matches: the base model never
+stops and has no non-English ability; the instruct model stops too well. Cutting the base model's
+outputs shorter only raises its mean BLEU to ~0.8 (≈128-token cap), because its en→X output is
+unusable. The paper's numbers fit a multilingual model whose outputs run on past the translation,
+i.e. generation that does not stop at the end-of-text token. That would also explain Qwen2.5-3B
+(§12): the paper's 3B outputs into English were long (TER 622), ours stop (TER 195).
+`02_generate` now has `IGNORE_EOS` and `MAX_NEW_TOKENS` to test this; runs with them are saved
+as `<model>@noeos<N>` / `<model>@max<N>`.
