@@ -17,6 +17,9 @@ Modes (paper experiments)
   oracle       : Reasoning Module on the annotated evidence pages     (Table 3 "Evidence Pages (Oracle)")
 Modes (this extension)
   cdc     : the gated pipeline above
+  visual_adj : Option 1 + 4 on top of a finished `doclens` run (--reuse_from): when all k sampled
+            answers agree, return that answer and skip the Adjudicator (unanimity gate); otherwise a
+            visual Adjudicator sees the evidence pages plus the k analyses/answers and picks one
   analyze : computes the CDC report AND runs every path (abstain, correct, doclens) for
             every question, so thresholds can be swept offline (scripts/analyze_results.py)
 
@@ -72,12 +75,14 @@ from .prompts import (
     CONFIDENCE_JUDGE_SYSTEM_PROMPT,
     DEGRADATION_AWARE_ADJUDICATOR_ADDENDUM,
     DEGRADATION_AWARE_SAMPLER_ADDENDUM,
+    VISUAL_ADJUDICATOR_SYSTEM_PROMPT,
     insert_before_output_format,
 )
 from .restoration import restore, to_base64_jpeg
 
 
-MODES = {"vanilla", "vanilla_ocr", "doclens", "no_lens", "no_reasoning", "oracle", "cdc", "analyze"}
+MODES = {"vanilla", "vanilla_ocr", "doclens", "no_lens", "no_reasoning", "oracle", "cdc", "analyze", "visual_adj"}
+VISUAL_ADJ_MAX_ANALYSIS_CHARS = 2000  # long sampled analyses are cut (head kept) to leave room for the pages
 NO_LENS_MODES = {"vanilla", "vanilla_ocr", "no_lens", "oracle"}
 
 
@@ -390,6 +395,9 @@ class CDCDocLensProcessor(DocLensProcessor):
                 await self._score(data, prefixes)
             return data
 
+        if self.mode == "visual_adj":
+            return await self._visual_adj(data)
+
         # Lens Module (or its outputs from an earlier run on the same question)
         prev = self._reusable(data)
         if prev is not None:
@@ -466,6 +474,91 @@ class CDCDocLensProcessor(DocLensProcessor):
             await self._score(data, score_prefixes)
             if self.mode == "doclens":
                 await self.score_candidates(data)
+        return data
+
+
+    # ------------------------------------------------------------------ #
+    # Option 1 + 4: unanimity gate + visual Adjudicator (on a finished DocLens run)
+    # ------------------------------------------------------------------ #
+    async def _visual_adj(self, data: dict) -> dict:
+        prev = self._reusable(data)
+        if prev is None or "doclens_cand1_prediction" not in prev or "doclens_cand1_score" not in prev:
+            raise RuntimeError("visual_adj needs this question's scored DocLens record (--reuse_from qwen_doclens.jsonl)")
+        start = time.time()
+        # the Lens outputs, the k sampled answers and their scores, and DocLens' own result (= B1)
+        data.update({k: v for k, v in prev.items() if k.startswith(("pgnav_", "doclens_", "lens_"))})
+        data["b1_prediction"] = prev.get("final_prediction", "")
+        data["b1_score"] = float(prev.get("final_score", 0.0))
+        data["b1_tokens"] = int(float(prev.get("final_tokens", 0) or 0))
+        k = 0
+        while f"doclens_cand{k + 1}_prediction" in data:
+            k += 1
+        cands = [{"prediction": str(data[f"doclens_cand{i}_prediction"]),
+                  "analysis": str(data.get(f"doclens_cand{i}_analysis", "")),
+                  "score": float(data.get(f"doclens_cand{i}_score", 0.0)),
+                  "extracted": data.get(f"doclens_cand{i}_extracted_pred", "")} for i in range(1, k + 1)]
+        groups: Dict[str, List[int]] = {}
+        for i, c in enumerate(cands):
+            n = _norm_answer(c["prediction"])
+            if n and n != "error":
+                groups.setdefault(n, []).append(i)
+        valid = sum(len(v) for v in groups.values())
+        top = max(groups.values(), key=len) if groups else [0]
+        maj = cands[top[0]]
+        data["gate_agreement"] = len(top) / valid if valid else 0.0
+        data["majority_prediction"] = maj["prediction"]
+        data["majority_score"] = maj["score"]
+        base_tokens = int(float(data.get("lens_tokens", 0) or 0)) + int(float(data.get("doclens_sampler_tokens", 0) or 0))
+
+        if len(groups) == 1:  # Option 1: all valid sampled answers agree -> no Adjudicator
+            data["visadj_called"] = False
+            data["visadj_tokens"] = 0
+            data["final_prediction"] = maj["prediction"]
+            data["final_score"] = maj["score"]
+            data["final_extracted_pred"] = maj["extracted"]
+            data["final_tokens"] = base_tokens
+            data["visadj_time_sec"] = 0.0
+            return data
+
+        # Option 4: the Adjudicator sees the same evidence the Answer Sampler saw
+        question = data["preprocessed_question"]
+        content = await generation_utils.get_doc_content_list_async(
+            data=data, input_pages=self.exp_config.phase2_input_pages,
+            input_mode=self.exp_config.phase2_input_mode, exp_config=self.exp_config,
+        )
+        cut = VISUAL_ADJ_MAX_ANALYSIS_CHARS
+        agent_answers = "".join(
+            f"Agent {i + 1}\nAnalysis: {c['analysis'][:cut]}{' [...]' if len(c['analysis']) > cut else ''}\n"
+            f"Answer: {c['prediction']}\n" for i, c in enumerate(cands))
+        content.append({"type": "text", "text":
+                        f"\n\n**Question**: {question}\n\n**List of Agent Analyses and Answers**:\n {agent_answers}\n\n**Your Output**:"})
+        texts, tokens = await self.adjudicator.call_llm_with_retry_async(
+            content_list=content, system_prompt=VISUAL_ADJUDICATOR_SYSTEM_PROMPT, temperature=0, candidate_num=1,
+        )
+        if str(texts[0]).strip() == "Error":  # the server call failed: retried on the next run
+            raise RuntimeError("visual Adjudicator call failed")
+        adj = self.adjudicator._parse_response(texts[0], ["analysis", "prediction"], "x")
+        pred = str(adj.get("x_prediction", "")).strip()
+        if not pred or pred == "Error":  # unparsable output: fall back to DocLens' own Adjudicator answer
+            data["visadj_fallback"] = True
+            pred = data["b1_prediction"]
+        data["visadj_called"] = True
+        data["visadj_prediction"] = pred
+        data["visadj_analysis"] = adj.get("x_analysis", "")
+        data["visadj_tokens"] = tokens
+        data["visadj_time_sec"] = time.time() - start
+        data["final_prediction"] = pred
+        data["final_tokens"] = base_tokens + tokens
+        # Same answer text as a sampled answer (or as DocLens' answer) -> reuse its score, so that
+        # every method is compared under exactly the same extraction; otherwise score it now.
+        same = [c for c in cands if _norm_answer(c["prediction"]) == _norm_answer(pred)]
+        if same:
+            data["final_score"], data["final_extracted_pred"] = same[0]["score"], same[0]["extracted"]
+        elif _norm_answer(pred) == _norm_answer(data["b1_prediction"]):
+            data["final_score"] = data["b1_score"]
+            data["final_extracted_pred"] = prev.get("final_extracted_pred", "")
+        elif self.evaluate and "answer" in data:
+            await self._score(data, ["final_"])
         return data
 
     # ------------------------------------------------------------------ #

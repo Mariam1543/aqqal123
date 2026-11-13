@@ -880,3 +880,44 @@ def test_shorten_texts_cuts_only_long_text_parts():
     assert out[0]["text"] == "short"
     assert len(out[1]["text"]) < len(long) * 0.8 and out[1]["text"].endswith("END")
     assert out[2] == parts[2]
+
+
+@requires_doclens
+def test_visual_adj_gate_and_visual_adjudicator(tmp_path, monkeypatch):
+    """Option 1 + 4: unanimous sampled answers skip the Adjudicator; otherwise the Adjudicator sees
+    the evidence pages and the sampled answers; scores of picked sampled answers are reused."""
+    _doc(tmp_path, [("clean", 0), ("clean", 0)])
+    calls = []
+    proc = _make_processor(tmp_path, "visual_adj", calls, monkeypatch)
+
+    def prev(preds, scores, final_pred, final_score):
+        r = {**_sample(), "variant": None, "model_name": None, "pgnav_all_located_pages": "[1, 2]",
+             "lens_tokens": 10, "doclens_sampler_tokens": 20, "final_prediction": final_pred,
+             "final_score": final_score, "final_tokens": 35}
+        for i, (p, s) in enumerate(zip(preds, scores), 1):
+            r[f"doclens_cand{i}_prediction"], r[f"doclens_cand{i}_analysis"] = p, f"why {p}"
+            r[f"doclens_cand{i}_score"], r[f"doclens_cand{i}_extracted_pred"] = s, p
+        return r
+
+    # unanimous -> no call, majority answer and its score
+    proc.reuse_records = {proc.sample_key(_sample()): prev(["7", "7."], [0.0, 0.0], "7", 0.0)}
+    out = asyncio.run(proc.process_single_document(_sample()))
+    assert calls == [] and out["visadj_called"] is False
+    assert out["final_prediction"] == "7" and out["final_score"] == 0.0 and out["final_tokens"] == 30
+    assert out["b1_score"] == 0.0
+
+    # disagreement -> one visual call with page images + both answers; picks "42", reuses its score
+    proc.reuse_records = {proc.sample_key(_sample()): prev(["7", "42"], [0.0, 1.0], "7", 0.0)}
+    out = asyncio.run(proc.process_single_document(_sample()))
+    assert len(calls) == 1 and calls[0]["agent"] == "Adjudicator" and calls[0]["k"] == 1
+    assert "You can see the evidence" in calls[0]["system"]
+    assert any(c["type"] == "image" for c in calls[0]["content"])
+    last = calls[0]["content"][-1]["text"]
+    assert "Answer: 7" in last and "Answer: 42" in last
+    assert out["visadj_called"] is True and out["final_prediction"] == "42" and out["final_score"] == 1.0
+    assert out["final_tokens"] == 30 + 100 and out["b1_score"] == 0.0
+
+    # no DocLens record -> clear error
+    proc.reuse_records = {}
+    with pytest.raises(RuntimeError):
+        asyncio.run(proc.process_single_document(_sample()))
