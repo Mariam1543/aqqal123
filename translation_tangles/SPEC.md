@@ -305,3 +305,12 @@ i.e. generation that does not stop at the end-of-text token. That would also exp
 (§12): the paper's 3B outputs into English were long (TER 622), ours stop (TER 195).
 `02_generate` now has `IGNORE_EOS` and `MAX_NEW_TOKENS` to test this; runs with them are saved
 as `<model>@noeos<N>` / `<model>@max<N>`.
+
+**Resolved.** OLMo-2 1B Instruct with generation forced past the end-of-text token
+(`olmo2-1b@noeos256`, `results/fast_metrics_olmo2-1b@noeos256.json`) is the first OLMo run in the
+paper's range: mean BLEU 1.22 vs 2.35, en-de 2.24 vs 2.39, en-zh 3.53 vs 3.97, r = 0.69 across
+directions. Its outputs are still too long (de-en TER 915 vs 366). Cutting the same outputs to
+~128 tokens (equivalent to forcing 128 tokens, since generation is left to right) gives mean BLEU
+2.08 vs 2.35, de-en 6.82 vs 6.75, TER 423 vs 366 — a close match on all three. The paper's
+"OLMo-1B" is therefore best reproduced as OLMo-2 1B Instruct, raw prompt, ~128 forced new
+tokens. Final run: `olmo2-1b` with `IGNORE_EOS=True, MAX_NEW_TOKENS=128`.
