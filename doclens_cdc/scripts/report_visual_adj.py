@@ -7,7 +7,7 @@ Compared on the same questions, the same sampled answers and the same scoring:
     O1   Option 1: unanimity gate + DocLens' text-only Adjudicator (no new model call)
     O14  Option 1 + 4: unanimity gate + visual Adjudicator (this run)
 
-    python scripts/report_visual_adj.py results_qwen/MMLongBenchDoc/qwen_visual_adj.jsonl --out visual_adj_report.md
+    python scripts/report_visual_adj.py a.jsonl [b.jsonl ...] --out visual_adj_report.md
 """
 
 import argparse
@@ -20,13 +20,16 @@ import numpy as np
 CORRECT_AT = 0.5
 
 
-def load(path):
+def load(paths):
+    """Records of one or several result files (e.g. the 200 questions + the extra parts); a question
+    that appears twice is counted once."""
     best = {}
-    for line in Path(path).read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            r = json.loads(line)
-            if "cdc_error" not in r and "final_score" in r and "b1_score" in r:
-                best[(r["doc_id"], r["question"], str(r.get("answer", "")))] = r
+    for path in ([paths] if isinstance(paths, (str, Path)) else paths):
+        for line in Path(path).read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                r = json.loads(line)
+                if "cdc_error" not in r and "final_score" in r and "b1_score" in r:
+                    best[(r["doc_id"], r["question"], str(r.get("answer", "")))] = r
     return list(best.values())
 
 
@@ -110,7 +113,7 @@ def report(rows):
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("results")
+    p.add_argument("results", nargs="+", help="one or more visual_adj result files (merged)")
     p.add_argument("--out", default=None)
     a = p.parse_args()
     rows = rows_of(load(a.results))
