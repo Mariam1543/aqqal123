@@ -1,0 +1,355 @@
+\documentclass[pdflatex,sn-basic]{sn-jnl}% Springer Nature template, basic reference style
+
+\usepackage{graphicx}%
+\usepackage{multirow}%
+\usepackage{amsmath,amssymb,amsfonts}%
+\usepackage{amsthm}%
+\usepackage{mathrsfs}%
+\usepackage[title]{appendix}%
+\usepackage{xcolor}%
+\usepackage{textcomp}%
+\usepackage{manyfoot}%
+\usepackage{booktabs}%
+\usepackage{tikz}%
+\usetikzlibrary{positioning,shapes.geometric,arrows.meta,fit,calc}%
+\usepackage{pgfplots}%
+\pgfplotsset{compat=1.16}%
+\raggedbottom
+
+% Set to \extendedtrue after the 400 extra questions have been run and Table~\ref{tab:extended} is filled in.
+\newif\ifextended
+\extendedfalse
+
+\begin{document}
+
+\title[Agreement-Gated Visual Adjudication]{Agreement-Gated Visual Adjudication for Long Document Question Answering with Qwen3-VL-8B}
+
+\author[1]{\fnm{Mariam} \sur{Zayed}}
+
+\affil[1]{\orgdiv{Artificial Intelligence}, \orgname{Fast NUCES}, \orgaddress{\city{Islamabad}, \country{Pakistan}}}
+
+\abstract{Multi-agent systems answer questions about long documents in three steps. They find the evidence pages, they sample several candidate answers, and an Adjudicator picks the final answer. In DocLens, the Adjudicator runs on every question, it reads only the text of the candidate answers, and it can change an answer that was already correct. We study when this step is needed and whether it should look at the pages. We propose a gated visual Adjudicator. A gate counts how many of the eight sampled answers agree and skips the Adjudicator when all of them agree. When they disagree, a visual Adjudicator reads the evidence pages together with the candidate answers. The method needs no fine-tuning and no change to the DocLens prompts. We reproduce vanilla Qwen3-VL-8B, Qwen3-VL-8B with OCR and DocLens on 200 random MMLongBench-Doc questions and obtain accuracies of 40.9, 37.3 and 56.3. Our method reaches 57.3 and calls the Adjudicator on 52\% of the questions instead of all of them, but it uses 6.7\% more tokens. The gain over DocLens is small and is not statistically significant on 200 questions. It is clearest on table questions (+5.0) and figure questions (+2.0). We also report where the method does not help.}
+
+\keywords{document question answering, long documents, multi-agent systems, adjudication, agreement gate, vision-language models}
+
+\maketitle
+
+% Introduction (about 1.5 pages in a two-column conference format).
+\section{Introduction}
+\label{sec:intro}
+
+Visual document understanding (VDU) is the task of reading a document the way a person does and getting useful information from it. A document is more than text. It also has tables, charts, figures, images and a page layout. A VDU system must read all of these together \cite{xu2020layoutlm,kim2022donut}. Early methods ran optical character recognition (OCR) first and then used the text and its position on the page \cite{xu2020layoutlm}. Later methods read the page image directly \cite{kim2022donut}. Today, large vision-language models (VLMs) such as Qwen3-VL \cite{bai2025qwen3vl} take page images as input and can answer questions about them.
+
+A main VDU task is visual question answering (VQA). In VQA, the system gets an image and a question in natural language, and it must return a correct answer \cite{antol2015vqa}. When the image is a document page, the task is called document VQA (DocVQA) \cite{mathew2021docvqa}. For example, a question may ask for the total in a table of an invoice, or for the highest bar in a chart. The answer is usually a short text, a number or a list. The first DocVQA datasets use one page image per question \cite{mathew2021docvqa}. This is much easier than the real use case, where the evidence is spread over many pages.
+
+Document question answering matters because people need facts from documents every day. A worker may need one number from a financial report. A student may need one result from a research paper. A technician may need one step from a long manual. A clerk may need a date or an amount from an official form, and a lawyer may need one clause from a long contract. Reading all the pages takes a lot of time, so a good system saves time and money. A wrong answer can also cause harm, for example a wrong amount in a financial report or a wrong step in a repair guide. So the system must be both fast and correct.
+
+Real documents are often long. Reports, manuals and research papers have dozens of pages, and the evidence for one question can be in a table on one page and in a chart on another. MMLongBench-Doc \cite{ma2024mmlongbench} is a benchmark for this setting. Its documents have 49.4 pages on average, about one third of its questions need evidence from more than one page, and about 23\% of its questions cannot be answered from the document. In the benchmark paper, the best model, GPT-4o, reaches only 42.7 F1, and the best open-source VLM is 11.9\% behind the best language model that reads the OCR text \cite{ma2024mmlongbench}. A long document is hard for two reasons. The system must first find the pages and the parts that hold the evidence, and then it must use that evidence to give the right answer.
+
+A single model that reads all the pages at once has two problems. The input is very long, and small details in charts and tables are easily lost. For this reason, many recent systems use several steps or several agents for this task. DocLens \cite{zhu2025doclens}, SlideAgent \cite{slideagent}, Doc-V* \cite{docvstar} and ORCA \cite{orca} are four examples. DocLens has two modules. The Lens Module finds the right pages and the right parts of the pages. In the Reasoning Module, an Answer Sampler writes several candidate answers, and an Adjudicator then decides the final answer. DocLens reports an accuracy of 61.1 with Qwen3-VL-8B on 200 random questions of MMLongBench-Doc \cite{zhu2025doclens}. SlideAgent turns on its specialized agents only when they are needed \cite{slideagent}, and ORCA calls its debate and adjudication step only when it is needed \cite{orca}. % VERIFY: the original draft said that ORCA and SlideAgent skip later steps when agents agree, and that ORCA reports 12% of failures from over-refinement. I could not confirm this from the abstracts, so the sentence above uses only what the abstracts state.
+
+In DocLens, the Adjudicator runs on every question. This adds one more model call to each question. The Adjudicator can also change an answer that was already correct. We call this over-correction. In this case, the Adjudicator adds cost and lowers accuracy at the same time. A second problem is that the Adjudicator reads only the text of the candidate analyses and answers. It does not see the document pages. When the candidates disagree, it cannot check them against the pages. So the main questions are when the Adjudicator is needed, and how it can use the pages when it is needed. This is the gap that we study. If the answers of the Answer Sampler agree, an extra model call brings little new information and may only add cost or risk. If they disagree, the text of the answers alone is often not enough to find the correct one, and the pages are the best source of evidence. This gives two ideas. First, we should call the Adjudicator only when the candidate answers disagree. Second, when we do call it, it should look at the pages.
+
+To address this problem, we propose a confidence gate for DocLens. The gate counts how many of the $k=8$ candidate answers agree. If all of them agree, the system skips the Adjudicator and returns the majority answer. If they do not agree, a visual Adjudicator runs. It reads the same evidence pages as the Answer Sampler, together with the candidate answers, and then picks the final answer. The gate does not change the DocLens prompts for the Answer Sampler, and we do not fine-tune the backbone model.
+
+\begin{enumerate}
+  \item We propose an agreement gate for the DocLens Adjudicator. It normalizes the $k=8$ sampled answers and skips adjudication when all of them agree, which removes the Adjudicator call for these questions.
+  \item We propose a visual Adjudicator. It conditions on the evidence pages (page screenshots, localized elements and OCR text) in addition to the candidate analyses and answers, and it is called only when the sampled answers disagree.
+  \item We compare the fixed unanimity gate with a threshold chosen by five-fold cross-validation over documents, with always running the Adjudicator, and with majority voting. We report accuracy, over-correction rate, fix rate, Adjudicator rate, token cost and paired bootstrap confidence intervals.
+  \item We reproduce vanilla Qwen3-VL-8B, Qwen3-VL-8B with OCR and DocLens on a random sample of 200 MMLongBench-Doc questions (seed 0)\ifextended, and we evaluate our method on 400 further questions (seed 1) that were not used to design it\fi. We explain how our numbers differ from the original paper.
+\end{enumerate}
+
+
+\section{Related Work}
+\label{sec:related}
+
+\subsection{Visual Document Understanding and Document VQA}
+Early work on document images combined OCR text with the position of each word. LayoutLM is a well-known example that learns from text and layout together \cite{xu2020layoutlm}. OCR-free models, such as Donut, read the page image and avoid errors from the OCR step \cite{kim2022donut}. The DocVQA dataset asks questions about single page images \cite{mathew2021docvqa}, in the same way as VQA asks questions about natural images \cite{antol2015vqa}. Recent vision-language models, for example Qwen3-VL \cite{bai2025qwen3vl}, read pages as images and answer in one pass, and they are the backbone of the systems in this paper.
+
+\subsection{Long Document Question Answering}
+In a long document, the evidence can be on any page, in text, in a table or in a chart. MMLongBench-Doc collects 1,082 expert-written questions over long documents, including questions that need several pages and questions that cannot be answered \cite{ma2024mmlongbench}. Putting all pages in one prompt is costly and hides small details. Retrieval-based methods first select pages. M3DocRAG uses a multi-modal retriever and then a multi-modal language model \cite{cho2024m3docrag}. SimpleDoc retrieves pages with two cues and lets one reasoner add pages to a working memory until it can answer \cite{jain2025simpledoc}.
+
+\subsection{Multi-Agent and Multi-Step Document Systems}
+Several systems split the task between agents. MDocAgent uses text and image retrieval and five agents, including a critical agent and a summarizing agent \cite{han2025mdocagent}. SlideAgent builds global, page and element agents and turns them on only when a question needs them \cite{slideagent}. ORCA breaks a question into steps, sends the steps to task agents, and uses a debate and adjudication step when needed \cite{orca}. Doc-V* reads a thumbnail view of the document and then fetches pages in steps, and it is trained with imitation learning and reinforcement learning \cite{docvstar}. DocLens finds pages and page elements with a Lens Module, and a Reasoning Module samples several answers and uses an Adjudicator to choose one \cite{zhu2025doclens}. Our work builds on DocLens.
+
+\subsection{Answer Aggregation and Adjudication}
+Sampling several answers and combining them is a standard way to reduce errors. Self-consistency takes the most common answer among several reasoning paths \cite{wang2023selfconsistency}. A language model can also act as a judge that chooses between answers \cite{zheng2023judging}. The DocLens Adjudicator is a judge of this type, but it reads only the text of the candidate analyses and answers \cite{zhu2025doclens}. It does not see the document, and it runs on every question.
+
+\subsection{Summary and Positioning}
+Table~\ref{tab:related} summarizes the systems above. These works improve how pages are found or how agents work together. We look at one step that they share, the final decision between candidate answers. We ask when this step is needed and whether the judge should see the pages.
+
+\begin{table}[t]
+\caption{Summary of related long document systems, as reported in their abstracts.}
+\label{tab:related}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{1.55cm}p{6.5cm}@{}}
+\toprule
+Method & Main idea \\
+\midrule
+M3DocRAG \cite{cho2024m3docrag} & Multi-modal page retrieval, then a multi-modal language model answers \\
+MDocAgent \cite{han2025mdocagent} & Text and image retrieval with five cooperating agents \\
+SimpleDoc \cite{jain2025simpledoc} & Dual-cue page retrieval and one reasoner with a working memory \\
+SlideAgent \cite{slideagent} & Global, page and element agents, activated when needed \\
+Doc-V* \cite{docvstar} & Coarse-to-fine page navigation, trained with imitation and reinforcement learning \\
+ORCA \cite{orca} & Task agents with a debate and adjudication step when needed \\
+DocLens \cite{zhu2025doclens} & Lens Module for pages and elements; sampler and text-only Adjudicator \\
+\textbf{Ours} & Agreement gate; Adjudicator that sees the pages when answers disagree \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Proposed Methodology}
+\label{sec:method}
+
+\subsection{System Architecture Overview}
+Fig.~\ref{fig:pipeline} shows the pipeline. We keep the DocLens Lens Module and Answer Sampler as they are. We change only the last step. A gate looks at the sampled answers. If they all agree, the system returns the majority answer. If they do not agree, a visual Adjudicator chooses the final answer. The system uses one backbone model for all steps and has no trained parameters of its own.
+
+\begin{figure*}[t]
+\centering
+\resizebox{0.97\textwidth}{!}{%
+\begin{tikzpicture}[
+  node distance=0.9cm and 0.9cm,
+  box/.style={draw, rectangle, minimum height=1.05cm, minimum width=2.6cm, align=center, font=\small, line width=0.5pt},
+  new/.style={box, fill=black!10},
+  dec/.style={draw, diamond, aspect=2, align=center, font=\small, inner sep=1pt, fill=black!10, line width=0.5pt},
+  arr/.style={-{Stealth[length=2.2mm]}, line width=0.5pt}
+]
+\node[box] (in) {Question and\\document pages};
+\node[box, right=of in] (lens) {Lens Module\\(Page Navigator,\\Element Localizer)};
+\node[box, right=of lens] (samp) {Answer Sampler\\$k=8$ candidate\\answers};
+\node[dec, right=of samp] (gate) {All answers\\agree?};
+\node[new, above right=0.15cm and 1.5cm of gate] (maj) {Return the\\majority answer};
+\node[new, below right=0.15cm and 1.5cm of gate] (vis) {Visual Adjudicator\\(pages + candidate\\answers)};
+\node[box, right=4.6cm of gate] (out) {Final\\answer};
+\draw[arr] (in) -- (lens);
+\draw[arr] (lens) -- (samp);
+\draw[arr] (samp) -- (gate);
+\draw[arr] (gate.east) |- (maj.west) node[pos=0.75, above, font=\footnotesize] {yes};
+\draw[arr] (gate.east) |- (vis.west) node[pos=0.75, below, font=\footnotesize] {no};
+\draw[arr] (maj.east) -| (out.north);
+\draw[arr] (vis.east) -| (out.south);
+\draw[arr, dashed] (lens.south) -- ++(0,-1.45) -| (vis.south);
+\node[font=\footnotesize, below=0.05cm of lens.south, xshift=3.7cm, yshift=-1.0cm] {evidence pages};
+\end{tikzpicture}}
+\caption{Pipeline of the gated visual Adjudicator. Shaded boxes are our additions. The dashed line shows that the visual Adjudicator receives the same evidence pages as the Answer Sampler.}
+\label{fig:pipeline}
+\end{figure*}
+
+\subsection{Lens Module}
+The Lens Module finds the evidence \cite{zhu2025doclens}. The Page Navigator reads the document pages together with their OCR text and returns the pages that may hold the answer. We run it with eight samples and take the union of the pages. The Element Localizer then cuts out figures and tables from these pages. The text of each page is extracted with MinerU \cite{wang2024mineru}. We do not change this module.
+
+\subsection{Answer Sampling}
+For each question, the Answer Sampler reads the located pages (the page screenshots, the cut-out elements and the page text) and writes $k=8$ candidates at temperature 0.7. Each candidate has a short analysis and an answer. The eight candidates come from one request, so the prompt is counted once. We use the unchanged DocLens prompt.
+
+\subsection{Agreement Gate}
+Let $y_1,\dots,y_k$ be the candidate answers and let $n(\cdot)$ lower-case an answer and remove spaces and punctuation. Let $V$ be the set of valid candidates, that is, those that are not empty and not an error. The agreement of a question is the share of valid candidates that equal the most common one,
+\begin{equation}
+a \;=\; \frac{1}{|V|}\,\max_{c}\,\bigl|\{\, i\in V : n(y_i)=c \,\}\bigr| .
+\end{equation}
+The gate skips the Adjudicator when $a\ge\tau$ and returns the most common answer. In our main setting $\tau=1$, so the Adjudicator is skipped only when all valid candidates agree. This rule is fixed in advance. We also test a threshold chosen by cross-validation (Section~\ref{sec:ablation}).
+
+\subsection{Visual Adjudicator}
+When the candidates disagree, the Adjudicator receives the same evidence as the Answer Sampler. This means the page screenshots, the cut-out elements and the page text. It also receives the question and the eight analyses and answers. Its prompt is based on the DocLens Adjudicator prompt. We add two rules. It must check the values that the competing answers depend on against the page images, and it must choose the text of one candidate answer, or answer ``Not answerable'' when the pages do not contain the requested value. Each analysis is cut to 2,000 characters. The decoding temperature is 0. If the output cannot be parsed, we return the answer of the DocLens Adjudicator.
+
+\subsection{Inference Protocol}
+Our method needs no training and no new data. To compare methods fairly, we reuse the eight sampled answers and the DocLens result of the same run. The score of a returned answer is taken from an identical candidate when one exists, and is computed with the same extraction step otherwise. All methods are then scored in the same way on the same questions.
+
+\section{Experimental Setup}
+\label{sec:setup}
+
+\subsection{Dataset: MMLongBench-Doc}
+MMLongBench-Doc has 1,082 questions over long PDF documents with 49.4 pages on average \cite{ma2024mmlongbench}. Each question has an evidence source (text, layout, chart, table or figure), and some questions have no answer in the document. The DocLens paper evaluates Qwen3-VL-8B on a random sample of 200 questions, but this sample is not published \cite{zhu2025doclens}. We draw our own sample of 200 questions with a fixed random seed (seed 0). It covers 95 documents. We use the same sample for every method.
+
+\subsection{Baseline Models}
+We compare the following systems, all with Qwen3-VL-8B-Instruct.
+\begin{itemize}
+  \item \textbf{Vanilla:} the model reads all page screenshots once and answers.
+  \item \textbf{Vanilla + OCR:} the same, with the OCR text of each page added.
+  \item \textbf{DocLens:} Lens Module, eight samples and the text-only Adjudicator, with the DocLens settings \cite{zhu2025doclens}.
+  \item \textbf{Majority vote:} the most common of the eight sampled answers, with no Adjudicator.
+  \item \textbf{Gate only:} our gate with the text-only Adjudicator for the questions where the answers disagree.
+  \item \textbf{Gate with a cross-validated threshold:} the threshold is chosen on the other folds.
+\end{itemize}
+
+\subsection{Implementation Details}
+We serve Qwen3-VL-8B-Instruct with vLLM \cite{kwon2023vllm} on two NVIDIA Tesla T4 GPUs (16 GB each) with tensor parallelism 2 and 16-bit weights. Table~\ref{tab:setup} lists the main settings. The memory of the T4 GPUs limits the context to 40,960 tokens, which is shorter than in the original work. Because of this, the Page Navigator reads long documents in chunks of six pages and merges the pages that it finds. If a request is too long, we halve the image resolution and retry, and we tile images when a request has more than 48 of them. We also use the same Qwen model, instead of Gemini-2.5-Flash, to extract the short answer for scoring. These choices explain part of the gap between our results and the original paper. The code is available at the link in the Declarations section.
+
+\begin{table}[t]
+\caption{Main settings of the experiments.}
+\label{tab:setup}
+\centering
+\footnotesize
+\begin{tabular}{@{}ll@{}}
+\toprule
+Setting & Value \\
+\midrule
+Backbone & Qwen3-VL-8B-Instruct \\
+Serving & vLLM, tensor parallel 2, 2$\times$T4 \\
+Context length & 40,960 tokens \\
+Page Navigator & 8 samples, 6 pages per request \\
+Answer Sampler & $k=8$, temperature 0.7 \\
+Adjudicator & temperature 0 \\
+Maximum output & 1,536 tokens per sample \\
+Page text & MinerU \\
+Images per request & at most 48 \\
+Questions & 200 (seed 0) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Evaluation Protocol and Metrics}
+We use the official MMLongBench-Doc scoring, which compares the extracted answer with the reference answer and gives partial credit for list answers. Accuracy is the mean score over the questions. We also report four numbers that describe the Adjudicator step. The \emph{Adjudicator rate} is the share of questions on which the Adjudicator runs. The \emph{over-correction rate} is the share of questions where the majority answer is correct but the returned answer is wrong. The \emph{fix rate} is the share where the majority answer is wrong but the returned answer is correct. \emph{Tokens} are the total tokens per question, counted over all steps. For differences between methods, we use a paired bootstrap with 10,000 resamples of the questions and report the 95\% confidence interval.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Reproduction of the Baselines}
+Table~\ref{tab:repro} compares our baselines with the DocLens paper. Our vanilla result is close to the paper (40.9 against 43.0). Our DocLens result is 4.8 points lower (56.3 against 61.1). Our OCR result is 5.6 points lower than the paper (37.3 against 42.9), and it is also lower than our vanilla result, while the paper reports almost equal values. We think that the shorter context of the T4 GPUs is the main reason, because the OCR text makes the prompts longer, but we did not test this. DocLens is clearly better than both baselines in our setup. Table~\ref{tab:cat} shows that this holds in every evidence category, and it is largest on unanswerable questions, where vanilla answers with a value instead of ``Not answerable''.
+
+\begin{table}[t]
+\caption{Accuracy (\%) of the baselines on our 200 questions, compared with the original paper (Qwen3-VL-8B).}
+\label{tab:repro}
+\centering
+\footnotesize
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Method & Ours & Paper & Difference \\
+\midrule
+Vanilla & 40.9 & 43.0 & $-2.1$ \\
+Vanilla + OCR & 37.3 & 42.9 & $-5.6$ \\
+DocLens & 56.3 & 61.1 & $-4.8$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table*}[t]
+\caption{Accuracy (\%) by evidence source on our 200 questions. TXT: plain text, LAY: layout, CHA: chart, TAB: table, FIG: figure, UNA: unanswerable, ANS: answerable. A question can have several sources.}
+\label{tab:cat}
+\centering
+\footnotesize
+\begin{tabular}{@{}lcccccccc@{}}
+\toprule
+Method & TXT & LAY & CHA & TAB & FIG & UNA & ANS & All \\
+\midrule
+Vanilla & 38.1 & 47.3 & 30.3 & 36.7 & 47.5 & 45.0 & 40.0 & 40.9 \\
+Vanilla + OCR & 32.8 & 24.0 & 20.8 & 27.3 & 38.1 & 56.8 & 32.9 & 37.3 \\
+DocLens & 51.2 & 48.0 & 41.5 & 44.8 & 53.7 & 75.7 & 51.9 & 56.3 \\
+\textbf{Gated visual Adjudicator (ours)} & 51.2 & 48.0 & 41.5 & 49.8 & 55.7 & 73.0 & 53.7 & 57.3 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Comparison with the Adjudication Baselines}
+Table~\ref{tab:main} compares the ways of choosing the final answer. In 48.0\% of the questions, all eight sampled answers agree. The text-only Adjudicator and the majority vote give a different score on only 4.5\% of the questions, so the choice matters for few questions. Majority voting alone is 1.5 points below DocLens (54.8 against 56.3). The gate with $\tau=1$ keeps the DocLens accuracy and removes 48\% of the Adjudicator calls. On the questions that it skips, the Adjudicator never changed the result. Our gated visual Adjudicator reaches 57.3, which is 1.0 point above DocLens and 2.5 points above majority voting.
+
+The gain over DocLens is small. The 95\% confidence interval is $-2.5$ to $+4.5$ points, so we cannot say that the true gain is above zero. The interval for the gain over majority voting is $-0.5$ to $+5.9$ points. On the 104 questions where the answers disagree, the accuracy rises from 36.9 to 38.8. The visual Adjudicator fixes 7 questions that DocLens answered wrongly and breaks 5 that DocLens answered correctly. Fig.~\ref{fig:category} shows the change by evidence source. The gain is on table questions (+5.0) and figure questions (+2.0). Unanswerable questions lose 2.7 points, because the visual Adjudicator sometimes accepts a value that is close to the requested one.
+
+\begin{table*}[t]
+\caption{Choice of the final answer on our 200 questions. Adjudicator rate is the share of questions on which the Adjudicator runs. Tokens are per question. Over-correction (OC) and fix rate (Fix) are not computed for our method.}
+\label{tab:main}
+\centering
+\footnotesize
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+Method & Accuracy & OC & Fix & Adjudicator rate & Tokens & Tokens vs.\ DocLens & Gain vs.\ DocLens (95\% CI) \\
+\midrule
+Majority vote & 54.8 & 0.0 & 0.0 & 0\% & 84,977 & $-3.0\%$ & $-1.5$ \\
+DocLens (always Adjudicator) & 56.3 & 1.5 & 3.0 & 100\% & 87,620 & -- & -- \\
+Gate, cross-validated $\tau$ & 54.8 & 1.5 & 1.5 & 30\% & 85,940 & $-1.9\%$ & $-1.5$ \\
+Gate, $\tau=1$ (text-only Adjudicator) & 56.3 & 1.5 & 3.0 & 52\% & 86,649 & $-1.1\%$ & $0.0$ \\
+\textbf{Gated visual Adjudicator (ours)} & \textbf{57.3} & -- & -- & 52\% & 93,456 & $+6.7\%$ & $+1.0$ ($-2.5$ to $+4.5$) \\
+\midrule
+Oracle gate (upper bound for any gate) & 57.8 & -- & -- & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  ybar, bar width=5pt, width=\columnwidth, height=4.6cm,
+  symbolic x coords={TXT,LAY,CHA,TAB,FIG,UNA},
+  xtick=data, ymin=0, ymax=90, enlarge x limits=0.1,
+  ylabel={Accuracy (\%)}, ylabel style={font=\footnotesize},
+  tick label style={font=\footnotesize},
+  legend style={font=\footnotesize, at={(0.5,1.08)}, anchor=south, legend columns=2, draw=none},
+  ymajorgrids, grid style={black!15}
+]
+\addplot[fill=black!35, draw=black!70] coordinates {(TXT,51.2) (LAY,48.0) (CHA,41.5) (TAB,44.8) (FIG,53.7) (UNA,75.7)};
+\addplot[fill=black!85, draw=black] coordinates {(TXT,51.2) (LAY,48.0) (CHA,41.5) (TAB,49.8) (FIG,55.7) (UNA,73.0)};
+\legend{DocLens, Ours}
+\end{axis}
+\end{tikzpicture}
+\caption{Accuracy by evidence source for DocLens and the gated visual Adjudicator.}
+\label{fig:category}
+\end{figure}
+
+\subsection{Call and Token Cost}
+Most tokens are spent before the Adjudicator. The Lens Module uses about 70,000 of the 87,620 tokens of a DocLens question, and the Answer Sampler uses about 14,800. The text-only Adjudicator uses only about 2,600 tokens (3\%). For this reason, the gate removes 48\% of the Adjudicator calls but saves only 1.1\% of the tokens. The visual Adjudicator reads page images, so each call is more expensive. Our method calls it on 52\% of the questions and uses 6.7\% more tokens than DocLens in total. The method therefore reduces the number of Adjudicator calls, but it does not reduce the total cost.
+
+\ifextended
+\subsection{Generalization to Additional Questions}
+To check the result on questions that were not used to design the method, we run DocLens and our method on 400 further questions (seed 1) that do not overlap with the first 200. Table~\ref{tab:extended} shows the result on these questions and on all 600 questions.
+
+\begin{table}[t]
+\caption{Accuracy (\%) on additional questions. TBD: to be filled in after the runs.}
+\label{tab:extended}
+\centering
+\footnotesize
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Method & 200 (seed 0) & 400 new & All 600 \\
+\midrule
+Majority vote & 54.8 & TBD & TBD \\
+DocLens & 56.3 & TBD & TBD \\
+Gated visual Adjudicator & 57.3 & TBD & TBD \\
+\bottomrule
+\end{tabular}
+\end{table}
+\fi
+
+\subsection{Limitations and Future Work}
+Our study has several limits. The sample has only 200 questions, so the gain of 1.0 point is within the sampling error, and we designed the visual Adjudicator after looking at results on the same questions. Our numbers are below the original paper because of the 2$\times$T4 setup and because Qwen extracts the answers for scoring. With a stricter extraction prompt, DocLens scores 53.6 and vanilla scores 35.8, and the order of the methods stays the same. We did not run the visual Adjudicator on every question, so we cannot separate the effect of the gate from the effect of the visual input in that setting. The visual Adjudicator costs more tokens and is slightly worse on unanswerable questions. About 15\% of the questions have a correct answer among the eight samples that the text-only Adjudicator does not choose, which is the room that the visual Adjudicator can use. Another 17\% have no correct answer among the samples, and about 10\% have eight identical wrong answers. These questions need better page retrieval or a stronger reader, not a better Adjudicator. Future work is a larger evaluation, other backbones and a visual Adjudicator that can abstain.
+
+\section{Ablation Study}
+\label{sec:ablation}
+
+\subsection{Without the Visual Adjudicator}
+If we keep the gate but use the text-only Adjudicator when answers disagree, the accuracy is 56.3. This is the same as DocLens and 1.0 point lower than our method (Table~\ref{tab:main}). The gate therefore removes 48\% of the Adjudicator calls without a loss, but it does not raise the accuracy. The accuracy gain comes from the visual input. Even a perfect gate with the text-only Adjudicator would reach only 57.8, so the text-only Adjudicator limits what a gate can gain.
+
+\subsection{Gate Threshold}
+Table~\ref{tab:tau} shows the accuracy and the Adjudicator rate for each threshold $\tau$ with the text-only Adjudicator. Accuracy reaches 56.3 at $\tau=0.875$, with 42\% of the calls, and stays at 56.3 at $\tau=1$ with 52\%. The threshold chosen by five-fold cross-validation over documents (0.875, 0.75, 0.875, 0.375 and 0.875 in the five folds) gives 54.8 with 30\% of the calls. It is 1.5 points below the fixed rule. We therefore use the simple rule $\tau=1$, which needs no tuning. The values at $\tau=0.875$ were found on the same 200 questions, so we do not use them as a result.
+
+\begin{table}[t]
+\caption{Accuracy (\%) and Adjudicator rate (\%) for different thresholds $\tau$ with the text-only Adjudicator. $\tau=0$ is majority voting and $\tau>1$ is DocLens.}
+\label{tab:tau}
+\centering
+\footnotesize
+\begin{tabular}{@{}lcccccccc@{}}
+\toprule
+$\tau$ & 0 & 0.375 & 0.5 & 0.625 & 0.75 & 0.875 & 1 & $>1$ \\
+\midrule
+Accuracy & 54.8 & 55.3 & 55.3 & 55.3 & 55.8 & 56.3 & 56.3 & 56.3 \\
+Adjud.\ rate & 0 & 5.5 & 14.0 & 24.5 & 31.5 & 42.0 & 52.0 & 100 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Conclusion}
+\label{sec:conclusion}
+We studied the final decision step of DocLens, in which an Adjudicator chooses between sampled answers. We proposed a gate that skips this step when all eight sampled answers agree, and a visual Adjudicator that reads the evidence pages when they disagree. With Qwen3-VL-8B on 200 MMLongBench-Doc questions, the method raised the accuracy from 56.3 to 57.3, called the Adjudicator on 52\% of the questions and used 6.7\% more tokens. The gain is small and is not statistically significant on this sample. It comes from table and figure questions, and it costs some accuracy on unanswerable questions. The gate alone removed almost half of the Adjudicator calls without a loss in accuracy. We also reproduced vanilla Qwen3-VL-8B, Qwen3-VL-8B with OCR and DocLens, and we explained why our numbers are lower than the original paper. A larger evaluation is the next step to show whether the gain holds.
+
+\section*{Declarations}
+
+\textbf{Data availability.} MMLongBench-Doc is available from its authors \cite{ma2024mmlongbench}. The question sample and the saved answers of all runs are available in the repository below.
+
+\textbf{Code availability.} The code and the prompts are available at \url{https://github.com/Mariam1543/aqqal123}.
+
+% Funding, Conflict of interest, Ethics approval and consent, Consent for publication, Materials availability and
+% Author contribution: add these statements if the journal asks for them (write ``Not applicable'' where they do not apply).
+
+\bibliography{sn-bibliography}%
+
+\end{document}
