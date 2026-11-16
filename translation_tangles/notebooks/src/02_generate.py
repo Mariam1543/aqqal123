@@ -103,22 +103,29 @@ if cfg.get("big"):
 # %%
 import glob, json, os, time, shutil, re
 from pathlib import Path
-from kaggle_secrets import UserSecretsClient
 
-os.environ["HF_TOKEN"] = UserSecretsClient().get_secret("HF_TOKEN")
-manifests = glob.glob("/kaggle/input/**/manifest.json", recursive=True)
-assert manifests, "Attach the tt-data dataset (Add Input -> Your Datasets -> tt-data)"
+# Kaggle: token from Secrets, data under /kaggle/input. Elsewhere (e.g. a university GPU):
+# export HF_TOKEN=... and put the unzipped tt_data folder next to the notebook (or set TT_DATA).
+ON_KAGGLE = os.path.isdir("/kaggle/input")
+if ON_KAGGLE:
+    from kaggle_secrets import UserSecretsClient
+    os.environ["HF_TOKEN"] = UserSecretsClient().get_secret("HF_TOKEN")
+assert os.environ.get("HF_TOKEN"), "Set the HF_TOKEN secret (Kaggle) or environment variable"
+WORK = Path("/kaggle/working" if ON_KAGGLE else os.environ.get("TT_WORK", "work"))
+search = ["/kaggle/input/**/manifest.json"] if ON_KAGGLE else [os.environ.get("TT_DATA", "tt_data") + "/**/manifest.json"]
+manifests = [m for pattern in search for m in glob.glob(pattern, recursive=True)]
+assert manifests, "Attach the tt-data dataset (Kaggle: Add Input) or unzip tt_data.zip into ./tt_data"
 DATA = Path(manifests[0]).parent
 directions = sorted(p for s in suites for p in (DATA / s).glob("*.jsonl"))
 print(f"Data: {DATA}  |  {len(directions)} directions")
 if SMOKE:
     directions = directions[:2]
 
-OUT = Path("/kaggle/working") / ("smoke" if SMOKE else "outputs") / RUN_NAME
+OUT = WORK / ("smoke" if SMOKE else "outputs") / RUN_NAME
 OUT.mkdir(parents=True, exist_ok=True)
 
 # Resume: copy finished files from an attached earlier output of this model, if any
-for prev in glob.glob(f"/kaggle/input/**/outputs/{RUN_NAME}", recursive=True):
+for prev in (glob.glob(f"/kaggle/input/**/outputs/{RUN_NAME}", recursive=True) if ON_KAGGLE else []):
     if not SMOKE:
         shutil.copytree(prev, OUT, dirs_exist_ok=True)
         print("Resumed from", prev)
@@ -263,5 +270,5 @@ print(f"Total: {(time.time() - t_all) / 60:.1f} min, backend {backend}")
 
 # %%
 if not SMOKE:
-    shutil.make_archive(f"/kaggle/working/outputs_{RUN_NAME}", "zip", OUT.parent, RUN_NAME)
-    print(f"Saved /kaggle/working/outputs_{RUN_NAME}.zip")
+    shutil.make_archive(str(WORK / f"outputs_{RUN_NAME}"), "zip", OUT.parent, RUN_NAME)
+    print(f"Saved {WORK / f'outputs_{RUN_NAME}.zip'}")
