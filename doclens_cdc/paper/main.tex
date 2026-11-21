@@ -1,0 +1,44 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{positioning,shapes.geometric,arrows.meta,fit,calc,backgrounds,patterns}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.16}
+\usepackage[hidelinks]{hyperref}
+\newtheorem{proposition}{Proposition}
+
+% Set to \extendedtrue after the extra questions have been run and Table~\ref{tab:extended} is filled in.
+\newif\ifextended
+\extendedfalse
+
+\begin{document}
+
+\title{Agreement-Gated Visual Adjudication for\\Long Visual Document Question Answering}
+
+\author{\IEEEauthorblockN{Mariam Zayed}
+\IEEEauthorblockA{\textit{Artificial Intelligence, Fast NUCES}\\
+Islamabad, Pakistan}}
+
+\maketitle
+
+\begin{abstract}
+Long visual document question answering systems first find the evidence pages, then sample several candidate answers, and finally let an Adjudicator choose one. In DocLens, this last step runs on every question and reads only the text of the candidates, although the sampled answers already agree on about half of the questions. We study when adjudication is needed and what the Adjudicator should see. We propose gated visual adjudication. An agreement gate skips the Adjudicator when all $k$ sampled answers agree, and otherwise a visual Adjudicator checks the candidates against the evidence pages. We formalize the pipeline, derive the accuracy change and the token cost of the gate, and show when a gate is lossless. With Qwen3-VL-8B on 200 MMLongBench-Doc questions, the method calls the Adjudicator on 52\% of the questions instead of all of them and raises the accuracy from 56.3\% to 57.3\%, with gains on table (+5.0) and figure (+2.0) questions, at 6.7\% more tokens. The improvement lies within the sampling error of 200 questions. The agreement of the samples predicts when adjudication helps, and most remaining errors come from evidence retrieval and reading, not from the final decision.
+\end{abstract}
+
+\begin{IEEEkeywords}
+document question answering, long documents, multi-agent systems, adjudication, agreement gate, vision-language models
+\end{IEEEkeywords}
+
+\input{content}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}

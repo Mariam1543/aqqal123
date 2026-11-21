@@ -27,9 +27,10 @@ def parse_args():
     p.add_argument("--samples", required=True, help="JSON list of questions (DocLens samples format)")
     p.add_argument("--variant", default=None, help="Label stored with every result (e.g. blur_s2)")
     p.add_argument("--mode", default="cdc",
-                   choices=["vanilla", "vanilla_ocr", "doclens", "no_lens", "no_reasoning", "oracle", "cdc", "analyze"],
+                   choices=["vanilla", "vanilla_ocr", "doclens", "no_lens", "no_reasoning", "oracle", "cdc", "analyze", "visual_adj"],
                    help="Paper experiments: vanilla / vanilla_ocr / doclens (Table 1), no_lens / no_reasoning "
-                        "(Table 2), oracle (Table 3). This extension: cdc / analyze. See cdc/processor.py.")
+                        "(Table 2), oracle (Table 3). This extension: cdc / analyze / visual_adj (Option 1+4, needs "
+                        "--reuse_from <scored doclens run>). See cdc/processor.py.")
     p.add_argument("--output", required=True, help="JSONL output; re-running resumes from it")
     p.add_argument("--limit", type=int, default=0, help="Only the first N questions")
     p.add_argument("--reuse_from", nargs="*", default=[],
