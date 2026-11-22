@@ -154,7 +154,7 @@ so that Proposition~\ref{prop:acc} states that gating changes the accuracy by th
 Table~\ref{tab:main} presents the main results. Our baselines are close to the published Qwen3-VL-8B numbers for vanilla prompting (40.9 against 43.0) and lower for OCR (37.3 against 42.9) and for DocLens (56.3 against 61.1). Three causes are likely: the shorter context of the T4 setup, the Qwen answer extractor, and a lower page recall of our Page Navigator (88.4\% against 97.3\% for Gemini-2.5-Pro in the DocLens paper). OCR text hurts in our setup, while the original paper reports almost equal values, which we attribute to the longer prompts that OCR text creates. DocLens is clearly better than both baselines, most of all on unanswerable questions (75.7 against 45.0 for vanilla).
 
 \begin{table*}[t]
-\caption{Main results on MMLongBench-Doc. We report accuracy (\%) for five evidence sources: plain text (TXT), layout (LAY), chart (CHA), table (TAB) and figure (FIG), for unanswerable questions (UNA) and for all questions (ALL). $^\dagger$ marks results taken from the original paper, so some cells are unavailable; the other published values are from the DocLens paper. $^\ddagger$ marks results on a random sample of 200 questions (our own sample for our runs). Bold marks the best value per column within the Qwen3-VL-8B block of our runs. Backbones and samples differ across blocks, so only the Qwen3-VL-8B rows are directly comparable. Human experts reach 65.8.}
+\caption{Main results on MMLongBench-Doc. We report accuracy (\%) for five evidence sources: plain text (TXT), layout (LAY), chart (CHA), table (TAB) and figure (FIG), for unanswerable questions (UNA) and for all questions (ALL). $^\dagger$ marks results taken from the original paper, so some cells are unavailable; the other published values are from the DocLens paper \cite{zhu2025doclens}. $^\ddagger$ marks results on a random sample of 200 questions (our own sample for our runs). Bold marks the best value per column within the Qwen3-VL-8B block of our runs. Backbones and samples differ across blocks, so only the Qwen3-VL-8B rows are directly comparable. Human experts reach 65.8.}
 \label{tab:main}
 \centering
 \footnotesize
@@ -181,7 +181,7 @@ Doc-V* (Qwen2.5-VL-7B)$^\dagger$ \cite{docvstar} & -- & -- & -- & -- & -- & -- &
 SimpleDoc (Claude-4-Sonnet) \cite{jain2025simpledoc} & 52.1 & 53.3 & 58.3 & 62.4 & 46.9 & 66.5 & 58.6 \\
 DocLens (Gemini-2.5-Pro) \cite{zhu2025doclens} & 63.7 & 64.6 & 64.3 & 69.7 & 60.2 & 72.2 & 67.6 \\
 \midrule
-\multicolumn{8}{c}{\textit{Qwen3-VL-8B, published \cite{zhu2025doclens}$^{\dagger\ddagger}$}} \\
+\multicolumn{8}{c}{\textit{Qwen3-VL-8B, published$^{\dagger\ddagger}$}} \\
 Vanilla & -- & -- & -- & -- & -- & -- & 43.0 \\
 Screenshots + OCR & -- & -- & -- & -- & -- & -- & 42.9 \\
 DocLens & -- & -- & -- & -- & -- & -- & 61.1 \\
