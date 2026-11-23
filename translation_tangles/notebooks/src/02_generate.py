@@ -29,6 +29,15 @@ IGNORE_EOS = False       # True = keep generating past the end-of-text token up 
 ATTN = None              # transformers attention: None (default), "eager" or "sdpa"; added to the run name
 DIRECTIONS = None        # None = all, or a list like ["de-en", "ru-en", "fi-en"] for a quick check (run name gets @sub)
 
+# Command-line runs (tools/run_queue.py) override the settings above through TT_* environment
+# variables; on Kaggle none are set, so the values above apply.
+import os
+MODEL = os.environ.get("TT_MODEL", MODEL)
+SMOKE = os.environ.get("TT_SMOKE", str(SMOKE)) == "True"
+SUITES = os.environ["TT_SUITES"].split(",") if os.environ.get("TT_SUITES") else SUITES
+MAX_NEW_TOKENS = int(os.environ["TT_MAX_NEW"]) if os.environ.get("TT_MAX_NEW") else MAX_NEW_TOKENS
+IGNORE_EOS = os.environ.get("TT_IGNORE_EOS", str(IGNORE_EOS)) == "True"
+
 # %% [markdown]
 # ## Model registry
 #
@@ -74,14 +83,20 @@ REGISTRY = {
                          awq="Qwen/Qwen2.5-32B-Instruct-AWQ"),
     "deepseek-r1-distill-32b": dict(hf="deepseek-ai/DeepSeek-R1-Distill-Qwen-32B", size="large", suites=DOM,
                                     awq="casperhansen/deepseek-r1-distill-qwen-32b-awq", reasoning=True),
-    # needs a bigger GPU (>= 48 GB at 4-bit)
-    "llama3-70b": dict(hf="meta-llama/Meta-Llama-3-70B-Instruct", size="large", suites=GEN, big=True),
-    "llama-3.1-70b": dict(hf="meta-llama/Llama-3.1-70B-Instruct", size="large", suites=GEN, big=True),
+    # needs a bigger GPU (>= 48 GB at 4-bit). The AWQ repo ids below were written from memory and are
+    # checked by tools/run_queue.py before a run; replace any it reports as missing.
+    "llama3-70b": dict(hf="meta-llama/Meta-Llama-3-70B-Instruct", size="large", suites=GEN, big=True,
+                       awq="casperhansen/llama-3-70b-instruct-awq"),
+    "llama-3.1-70b": dict(hf="meta-llama/Llama-3.1-70B-Instruct", size="large", suites=GEN, big=True,
+                          awq="hugging-quants/Meta-Llama-3.1-70B-Instruct-AWQ-INT4"),
+    "llama-3.3-70b": dict(hf="meta-llama/Llama-3.3-70B-Instruct", size="large", suites=DOM, big=True,
+                          awq="casperhansen/llama-3.3-70b-instruct-awq"),
+    "deepseek-r1-distill-70b": dict(hf="deepseek-ai/DeepSeek-R1-Distill-Llama-70B", size="large",
+                                    suites=DOM, big=True, reasoning=True,
+                                    awq="casperhansen/deepseek-r1-distill-llama-70b-awq"),
+    # vision model, ~55-80 GB at 4-bit; no AWQ id known, so it only runs with 80 GB+ at full 4-bit support
     "llama-3.2-90b-vision": dict(hf="meta-llama/Llama-3.2-90B-Vision-Instruct", size="large",
                                  suites=GEN + DOM, big=True),
-    "llama-3.3-70b": dict(hf="meta-llama/Llama-3.3-70B-Instruct", size="large", suites=DOM, big=True),
-    "deepseek-r1-distill-70b": dict(hf="deepseek-ai/DeepSeek-R1-Distill-Llama-70B", size="large",
-                                    suites=DOM, big=True, reasoning=True),
 }
 cfg = REGISTRY[MODEL]
 suites = SUITES or cfg["suites"]
