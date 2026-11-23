@@ -21,18 +21,22 @@ exec(next(c for c in _code if "REFUSAL = [" in c), _ns)
 _fast = next(c for c in _code if "def fast_metrics" in c)
 exec(_fast[:_fast.index("rows, kept")], _ns)
 is_refusal, fast_metrics, scored_output = _ns["is_refusal"], _ns["fast_metrics"], _ns["scored_output"]
+first_paragraph = _ns["first_paragraph"]
 
 
 def score_run(run_dir, results_path):
     results = json.load(open(results_path)) if Path(results_path).exists() else {}
     for path in sorted(Path(run_dir).glob("*/*.jsonl")):
         key = f"{path.parent.name}/{path.stem}"
-        if key in results:
+        if key in results and "bleu_first" in results[key]:
             continue
         rows = [json.loads(l) for l in open(path, encoding="utf-8")]
         use = [r for r in rows if not is_refusal(r["output"])]
         scored = [scored_output(r) for r in use]
         m = fast_metrics(scored, [r["reference"] for r in use], path.stem.split("-")[1])
+        if use:
+            m.update({k + "_first": v for k, v in fast_metrics([first_paragraph(t) for t in scored],
+                      [r["reference"] for r in use], path.stem.split("-")[1]).items()})
         m.update(n_total=len(rows), n_refused=len(rows) - len(use),
                  n_hit_max_tokens=sum(r.get("finish_reason") == "length" for r in rows),
                  n_preamble_stripped=sum(t != r["output"] for t, r in zip(scored, use)),

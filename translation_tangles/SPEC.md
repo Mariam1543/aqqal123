@@ -340,3 +340,16 @@ of ~2-3 h: the unpinned `pip install vllm` fetched 0.34.0, which crashes in kern
 model). Earlier runs that worked used 0.33.0, so the notebook and the university setup now pin
 `vllm==0.33.0`. The transformers-backend outputs are still valid generations (same prompt, same
 sampling); only speed differs.
+
+## 17. Translation-only (first line) view (`bleu_first` etc. in the metrics files)
+
+Llama-3.1-8B's Law and Medical scores were about half the paper's (e.g. Law en-es 25.3 vs 50.7). The
+pairs and translations are fine; the model appends notes ("Nota: a tradução exata pode variar…"),
+repeats the sentence after "Traduction:", or answers "No translation was provided", so outputs are
+1.6-2.2x the reference length. Scoring only the first non-empty line gives, over the 13 Law and Medical
+directions I compared: paper 33.1, as generated 22.4, first line 34.9. On the general suite the same
+view overshoots the paper (de-en 42.0 vs 24.7), so it is not a universal match. Every metrics row now
+has both: the headline columns are the text as generated, the `*_first` columns the first line only.
+Both are reported; neither is presented as the paper's method. Mean BLEU as generated vs first line:
+Llama-3.1-8B general 16.4 / 21.0, Law 22.1 / 34.3, Medical 17.8 / 31.6, Literature 6.7 / 9.2;
+Gemma-2-9B general 13.0 / see results file.

@@ -118,6 +118,12 @@ def fast_metrics(hyps, refs, tgt):
         "rougeL": sum(x["rougeL"].fmeasure for x in r) / len(r),
     }
 
+def first_paragraph(text):
+    """Translation-only view: the first non-empty line. Chat models often add notes, repeat the
+    sentence or append "Let me know..." after the translation (see SPEC §16, §17)."""
+    parts = re.split(r"\n\s*\n|\n", text.strip(), maxsplit=1)
+    return parts[0].strip()
+
 rows, kept = [], {}
 for (model, suite, direction), path in sorted(todo.items()):
     data = [json.loads(l) for l in open(path, encoding="utf-8")]
@@ -133,6 +139,9 @@ for (model, suite, direction), path in sorted(todo.items()):
     if use:
         row.update(fast_metrics([d["scored"] for d in use], [d["reference"] for d in use], tgt))
     row["n_preamble_stripped"] = sum(d["scored"] != d["output"] for d in use)
+    if use:   # secondary view: translation only (first line); the headline columns above stay as generated
+        row.update({k + "_first": v for k, v in
+                    fast_metrics([first_paragraph(d["scored"]) for d in use], [d["reference"] for d in use], tgt).items()})
     rows.append(row)
     kept[(model, suite, direction)] = use
     print(f"{model:24s} {suite:10s} {direction}: BLEU {row.get('bleu', float('nan')):6.2f}  "
