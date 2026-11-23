@@ -233,6 +233,10 @@ def encode(row):
     prompt = PROMPT.format(src=row["src_name"], tgt=row["tgt_name"], text=text)
     if USE_CHAT:
         msgs = ([{"role": "system", "content": SYSTEM_PROMPT}] if SYSTEM_PROMPT else []) + [{"role": "user", "content": prompt}]
+        try:
+            tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+        except Exception:   # e.g. Gemma templates reject a system role: put the instruction in the user turn
+            msgs = [{"role": "user", "content": SYSTEM_PROMPT + "\n\n" + prompt}]
         prompt = tok.apply_chat_template(msgs,
                                          tokenize=False, add_generation_prompt=True)
     # the chat template already contains BOS; add it only for raw prompts
