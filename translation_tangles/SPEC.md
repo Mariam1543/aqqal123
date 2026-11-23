@@ -353,3 +353,10 @@ has both: the headline columns are the text as generated, the `*_first` columns 
 Both are reported; neither is presented as the paper's method. Mean BLEU as generated vs first line:
 Llama-3.1-8B general 16.4 / 21.0, Law 22.1 / 34.3, Medical 17.8 / 31.6, Literature 6.7 / 9.2;
 Gemma-2-9B general 13.0 / see results file.
+
+**Gemma-2-9B test run** (`gemma2-9b@sys@eager@sub`: bfloat16, eager attention, system instruction "Output only the
+translation.", transformers backend, 3 directions). As generated BLEU: de-en 46.4 (paper 36.6, TER 40.5 vs 51.8),
+ru-en 37.0 (paper 41.7), fi-en 24.7 (paper 39.9). The notes disappear (as-generated equals the first-line view), so the
+extra text explains most of the earlier gap; the result then lands above the paper on de-en and below it on fi-en, so
+neither the paper's setting nor its fi-en number is reproduced exactly. A labelled extra, not the paper's method.
+The OLMo-2 `@noeos256` zip received on 23 Nov duplicates the run already scored (identical BLEU in all 24 directions).
