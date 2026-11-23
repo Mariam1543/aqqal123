@@ -366,3 +366,8 @@ The OLMo-2 `@noeos256` zip received on 23 Nov duplicates the run already scored 
 directions read from the paper: paper 34.2, as generated without the instruction 20.8, with it 36.3; mean |diff| to the paper
 fell from 15.6 to 7.1. The instruction removes the appended notes, which confirms they caused the low scores. It is not the
 paper's method (a labelled extra); some directions land above the paper (Medical en-fr 46 vs 33), a few below (Law en-pt 35 vs 48).
+
+**Llama-3.1-8B @sys, general + literature added** (46 directions now in `fast_metrics_llama-3.1-8b@sys.json`). Mean BLEU as generated /
+first line / with the instruction: general 16.4 / 21.0 / 23.1 (paper 11.7), literature 6.7 / 9.2 / 11.8, law 22.1 / 34.3 / 35.4,
+medical 17.8 / 31.6 / 33.6. On the general suite the paper's Llama-3.1-8B numbers are LOW (de-en 24.7, TER 106), and the instruction
+moves us further from them (de-en 44.2, TER 43), so the improved prompt helps Law/Medical match the paper but not the general suite.
