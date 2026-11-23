@@ -314,3 +314,15 @@ directions. Its outputs are still too long (de-en TER 915 vs 366). Cutting the s
 2.08 vs 2.35, de-en 6.82 vs 6.75, TER 423 vs 366 — a close match on all three. The paper's
 "OLMo-1B" is therefore best reproduced as OLMo-2 1B Instruct, raw prompt, ~128 forced new
 tokens. Final run: `olmo2-1b` with `IGNORE_EOS=True, MAX_NEW_TOKENS=128`.
+
+## 16. Gemma-2-9B (`results/fast_metrics_gemma2-9b.json`) matches less well
+
+Chat mode, transformers backend (`hf`, fp16 — vLLM was not used for this run). Mean BLEU 12.97 vs
+paper 21.39 (mean |diff| 9.6), de-en 27.0 vs 36.6, TER 106 vs 52. Gemma-2-9B appends "Let me know if
+you have any other text you'd like me to translate!" and sometimes a "**Explanation:**" breakdown
+(outputs are 1.65-2.1x the reference length). The paper's own App. E shows this trailing remark in a
+Gemma-2-9B output, so it is scored as generated (only the opening preamble is stripped, §14).
+Cutting those trailing remarks lifts the mean to 20.63 (paper 21.39) but overshoots some
+directions (de-en 44.4 vs 36.6), so neither reading matches per direction. Possible contributing
+factors, not tested: Gemma-2 in fp16 on T4 (the model is normally run in bf16), and Groq-side
+differences. Reported both ways rather than choosing the one that matches.
