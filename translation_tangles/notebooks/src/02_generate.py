@@ -26,6 +26,8 @@ PROMPT_MODE = None       # None = the model's default below; "chat" or "raw" to 
 MAX_NEW_TOKENS = None    # None = default (400, or 2048 for reasoning models); a number to override
 IGNORE_EOS = False       # True = keep generating past the end-of-text token up to MAX_NEW_TOKENS
 # A non-default MAX_NEW_TOKENS or IGNORE_EOS is added to the run name, e.g. olmo2-1b@noeos256
+SYSTEM_PROMPT = None     # None = the paper's setup (user turn only). A string adds a system message; the run name gets @sys.
+                         # Not the paper's method: use it only as a labelled extra, e.g. "Output only the translation."
 ATTN = None              # transformers attention: None (default), "eager" or "sdpa"; added to the run name
 DIRECTIONS = None        # None = all, or a list like ["de-en", "ru-en", "fi-en"] for a quick check (run name gets @sub)
 
@@ -111,6 +113,8 @@ MAX_MODEL_LEN = 6144 if REASONING else 4096
 MAX_NEW = MAX_NEW_TOKENS or (2048 if REASONING else 400)
 if IGNORE_EOS or MAX_NEW_TOKENS:
     RUN_NAME += "@" + ("noeos" if IGNORE_EOS else "max") + str(MAX_NEW)
+if SYSTEM_PROMPT:
+    RUN_NAME += "@sys"
 if ATTN:
     RUN_NAME += "@" + ATTN
 if DIRECTIONS:
@@ -228,7 +232,8 @@ def encode(row):
     text = tok.decode(ids[:INPUT_LIMIT]) if truncated else row["source"]
     prompt = PROMPT.format(src=row["src_name"], tgt=row["tgt_name"], text=text)
     if USE_CHAT:
-        prompt = tok.apply_chat_template([{"role": "user", "content": prompt}],
+        msgs = ([{"role": "system", "content": SYSTEM_PROMPT}] if SYSTEM_PROMPT else []) + [{"role": "user", "content": prompt}]
+        prompt = tok.apply_chat_template(msgs,
                                          tokenize=False, add_generation_prompt=True)
     # the chat template already contains BOS; add it only for raw prompts
     return tok(prompt, add_special_tokens=not USE_CHAT)["input_ids"], truncated
