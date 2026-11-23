@@ -360,3 +360,9 @@ ru-en 37.0 (paper 41.7), fi-en 24.7 (paper 39.9). The notes disappear (as-genera
 extra text explains most of the earlier gap; the result then lands above the paper on de-en and below it on fi-en, so
 neither the paper's setting nor its fi-en number is reproduced exactly. A labelled extra, not the paper's method.
 The OLMo-2 `@noeos256` zip received on 23 Nov duplicates the run already scored (identical BLEU in all 24 directions).
+
+**Llama-3.1-8B with the system instruction** (`llama-3.1-8b@sys`, vLLM 0.33.0, Law + Medical, 16 directions, clean run,
+0 refusals). Mean BLEU Law 35.4 (22.1 without, 34.3 first-line view), Medical 33.6 (17.8 / 31.6). Over the 13 Law/Medical
+directions read from the paper: paper 34.2, as generated without the instruction 20.8, with it 36.3; mean |diff| to the paper
+fell from 15.6 to 7.1. The instruction removes the appended notes, which confirms they caused the low scores. It is not the
+paper's method (a labelled extra); some directions land above the paper (Medical en-fr 46 vs 33), a few below (Law en-pt 35 vs 48).
