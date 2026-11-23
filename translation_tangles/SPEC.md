@@ -326,3 +326,10 @@ Cutting those trailing remarks lifts the mean to 20.63 (paper 21.39) but oversho
 directions (de-en 44.4 vs 36.6), so neither reading matches per direction. Possible contributing
 factors, not tested: Gemma-2 in fp16 on T4 (the model is normally run in bf16), and Groq-side
 differences. Reported both ways rather than choosing the one that matches.
+
+**Gemma-2-9B cause found (log of a smoke run):** vLLM refused to load it: "The model type 'gemma2'
+does not support float16. Reason: Numerical instability. Please use bfloat16 or float32." The
+notebook then fell back to transformers, still in float16 — the likely reason for the weaker
+scores above. The registry now sets `dtype="bfloat16"` for it. T4 GPUs lack native bfloat16 (and
+vLLM needs compute capability 8.0+), so the clean run is on an A100/H100 with vLLM; on Kaggle
+only the slower transformers path is possible. Not yet re-run.

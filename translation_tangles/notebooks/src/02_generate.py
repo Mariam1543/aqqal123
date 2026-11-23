@@ -73,7 +73,9 @@ REGISTRY = {
     "llama-3.2-1b": dict(hf="meta-llama/Llama-3.2-1B-Instruct", size="small", suites=GEN),   # not in the tables
     # medium (7-30B)
     "gemma-7b": dict(hf="google/gemma-7b-it", size="medium", suites=GEN),
-    "gemma2-9b": dict(hf="google/gemma-2-9b-it", size="medium", suites=GEN),
+    # Gemma-2 is numerically unstable in float16 (vLLM refuses it); it needs bfloat16, which T4 GPUs do
+    # not support natively, so on Kaggle it falls back to transformers. Run it on an A100/H100 for vLLM.
+    "gemma2-9b": dict(hf="google/gemma-2-9b-it", size="medium", suites=GEN, dtype="bfloat16"),
     "llama3-8b": dict(hf="meta-llama/Meta-Llama-3-8B-Instruct", size="medium", suites=GEN),
     "llama-3.1-8b": dict(hf="meta-llama/Llama-3.1-8B-Instruct", size="medium", suites=GEN + DOM),
     # large (> 30B), 4-bit on Kaggle
@@ -104,6 +106,7 @@ REASONING = cfg.get("reasoning", False)
 MODE = PROMPT_MODE or cfg.get("prompt", "chat")
 RAW = MODE == "raw"
 RUN_NAME = MODEL if MODE == cfg.get("prompt", "chat") else f"{MODEL}@{MODE}"
+DTYPE = cfg.get("dtype", "float16")
 MAX_MODEL_LEN = 6144 if REASONING else 4096
 MAX_NEW = MAX_NEW_TOKENS or (2048 if REASONING else 400)
 if IGNORE_EOS or MAX_NEW_TOKENS:
@@ -184,7 +187,7 @@ if backend in ("auto", "vllm"):
     try:
         from vllm import LLM, SamplingParams
         small = cfg["size"] == "small"
-        llm = LLM(model=weights, tokenizer=cfg["hf"], dtype="float16",
+        llm = LLM(model=weights, tokenizer=cfg["hf"], dtype=DTYPE,
                   tensor_parallel_size=1 if small else min(2, n_gpu),
                   quantization="awq" if cfg.get("awq") else None,
                   max_model_len=MAX_MODEL_LEN, gpu_memory_utilization=0.90,
@@ -202,7 +205,7 @@ if backend == "hf":
     if cfg["size"] == "large":
         quant = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
                                    bnb_4bit_compute_dtype=torch.float16)
-    model = AutoModelForCausalLM.from_pretrained(cfg["hf"], torch_dtype=torch.float16, device_map="auto",
+    model = AutoModelForCausalLM.from_pretrained(cfg["hf"], torch_dtype=getattr(torch, DTYPE), device_map="auto",
                                                  quantization_config=quant, trust_remote_code=True,
                                                  **({"attn_implementation": ATTN} if ATTN else {}))
     model.eval()
