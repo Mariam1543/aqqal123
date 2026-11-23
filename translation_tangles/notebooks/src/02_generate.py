@@ -26,6 +26,8 @@ PROMPT_MODE = None       # None = the model's default below; "chat" or "raw" to 
 MAX_NEW_TOKENS = None    # None = default (400, or 2048 for reasoning models); a number to override
 IGNORE_EOS = False       # True = keep generating past the end-of-text token up to MAX_NEW_TOKENS
 # A non-default MAX_NEW_TOKENS or IGNORE_EOS is added to the run name, e.g. olmo2-1b@noeos256
+ATTN = None              # transformers attention: None (default), "eager" or "sdpa"; added to the run name
+DIRECTIONS = None        # None = all, or a list like ["de-en", "ru-en", "fi-en"] for a quick check (run name gets @sub)
 
 # %% [markdown]
 # ## Model registry
@@ -91,6 +93,10 @@ MAX_MODEL_LEN = 6144 if REASONING else 4096
 MAX_NEW = MAX_NEW_TOKENS or (2048 if REASONING else 400)
 if IGNORE_EOS or MAX_NEW_TOKENS:
     RUN_NAME += "@" + ("noeos" if IGNORE_EOS else "max") + str(MAX_NEW)
+if ATTN:
+    RUN_NAME += "@" + ATTN
+if DIRECTIONS:
+    RUN_NAME += "@sub"
 INPUT_LIMIT = MAX_MODEL_LEN - max(500, MAX_NEW + 100)   # App. A.1: reserve room for prompt + response
 TEMPERATURE, SEED, HF_BATCH = 0.1, 42, 16
 print(RUN_NAME, cfg, "| prompt mode:", MODE, "| suites:", suites)
@@ -117,6 +123,8 @@ manifests = [m for pattern in search for m in glob.glob(pattern, recursive=True)
 assert manifests, "Attach the tt-data dataset (Kaggle: Add Input) or unzip tt_data.zip into ./tt_data"
 DATA = Path(manifests[0]).parent
 directions = sorted(p for s in suites for p in (DATA / s).glob("*.jsonl"))
+if DIRECTIONS:
+    directions = [p for p in directions if p.stem in DIRECTIONS]
 print(f"Data: {DATA}  |  {len(directions)} directions")
 if SMOKE:
     directions = directions[:2]
@@ -180,7 +188,8 @@ if backend == "hf":
         quant = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4",
                                    bnb_4bit_compute_dtype=torch.float16)
     model = AutoModelForCausalLM.from_pretrained(cfg["hf"], torch_dtype=torch.float16, device_map="auto",
-                                                 quantization_config=quant, trust_remote_code=True)
+                                                 quantization_config=quant, trust_remote_code=True,
+                                                 **({"attn_implementation": ATTN} if ATTN else {}))
     model.eval()
     tok.padding_side = "left"
     if tok.pad_token is None:
