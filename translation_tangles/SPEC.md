@@ -333,3 +333,10 @@ notebook then fell back to transformers, still in float16 — the likely reason 
 scores above. The registry now sets `dtype="bfloat16"` for it. T4 GPUs lack native bfloat16 (and
 vLLM needs compute capability 8.0+), so the clean run is on an A100/H100 with vLLM; on Kaggle
 only the slower transformers path is possible. Not yet re-run.
+
+**vLLM version pin.** The Llama-3.1-8B run (23 Nov) fell back to transformers and took 513 min instead
+of ~2-3 h: the unpinned `pip install vllm` fetched 0.34.0, which crashes in kernel warmup with
+`ModuleNotFoundError: No module named 'cutlass'` (a MiniMax-M3 warmup module, unrelated to the
+model). Earlier runs that worked used 0.33.0, so the notebook and the university setup now pin
+`vllm==0.33.0`. The transformers-backend outputs are still valid generations (same prompt, same
+sampling); only speed differs.

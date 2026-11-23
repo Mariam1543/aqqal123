@@ -10,7 +10,7 @@
 ## 2. One-time setup
     git clone <your repo> && cd <repo>/translation_tangles     # or copy the translation_tangles folder
     python3 -m venv venv && source venv/bin/activate
-    pip install vllm huggingface_hub sacrebleu
+    pip install vllm==0.33.0 huggingface_hub sacrebleu   # 0.34.0 crashes in warmup on some setups
     export HF_TOKEN=<your HuggingFace token>                   # not in any file, not in the chat
     unzip tt_data.zip -d tt_data                               # so that tt_data/manifest.json exists
 
