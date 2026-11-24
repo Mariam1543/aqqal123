@@ -44,25 +44,21 @@ document question answering, long documents, multi-agent systems, adjudication, 
 \section{Introduction}
 \label{sec:intro}
 
-Visual document understanding (VDU) is the task of reading a document the way a person does and extracting useful information from it. A document is more than a string of words. It also contains tables, charts, figures and a page layout, and a VDU system has to read all of them together \cite{huang2022layoutlmv3,kim2022donut}. Many VDU tasks are posed as question answering. In visual question answering (VQA), the system receives an image and a question in natural language and returns an answer. When the image is a document page, the task is called document VQA (DocVQA) \cite{mathew2021docvqa}, and closely related tasks use charts \cite{masry2022chartqa}, infographics \cite{mathew2022infographicvqa} and slides \cite{tanaka2023slidevqa}.
+Visual document understanding (VDU) is the task of reading a document the way a person does and turning what is read into useful information. A document is more than a string of words: it carries tables, charts, figures, icons and a page layout, and a VDU system has to interpret all of these signals together \cite{huang2022layoutlmv3,kim2022donut}. Much of VDU is posed as question answering. In visual question answering (VQA), a model receives an image and a natural-language question and returns an answer. When the image is a document page, the task becomes document VQA (DocVQA) \cite{mathew2021docvqa}, and closely related variants ask questions about charts \cite{masry2022chartqa}, infographics \cite{mathew2022infographicvqa} and slide decks \cite{tanaka2023slidevqa}. Questions of this kind were first asked about single pages, but the documents that people actually read are long. Annual reports, academic papers and technical manuals run to dozens of pages, and the evidence for one question may be a table on one page and a chart on another \cite{tito2023mpdocvqa,vanlandeghem2023dude}.
 
-The methods for these tasks have changed quickly. Early systems ran optical character recognition (OCR) first and then used the recognized words together with their position on the page \cite{huang2022layoutlmv3}. Later systems read the page image directly and avoid OCR errors \cite{kim2022donut}. Today, vision-language models (VLMs) such as Qwen2.5-VL, Qwen3-VL and Gemini take page images as input and answer in a single pass \cite{bai2025qwen25vl,bai2025qwen3vl,comanici2025gemini}.
+The ability to answer such questions reliably is important because long documents hold a large share of human knowledge in finance, science and engineering, and small misreadings can turn into costly decisions. An analyst who extracts a wrong figure from an earnings report, an engineer who follows a wrong step from a specification, or an educator who prepares material from a misread paper can spread the error further \cite{slideagent}. Long visual documents are formidably difficult even for strong vision-language models (VLMs), because the evidence is spread over many pages and mixes text with visual elements, and because a model that fails to find the evidence tends to invent an answer instead of admitting that the document does not contain one \cite{zhu2025doclens,ma2024mmlongbench}. A useful system therefore has to be accurate and also honest about what the document supports.
 
-This progress matters because people need facts from documents every day. A worker needs one number from a financial report, a student needs one result from a research paper, a technician needs one step from a long manual, and a lawyer needs one clause from a contract. Reading every page takes a lot of time, so a system that answers such questions saves time and money. A wrong answer can also do harm, for example a wrong amount in a report or a wrong step in a repair guide. A useful system must therefore be both fast and correct.
+These properties make long-document VQA relevant to many practical settings, including financial analysis, scientific literature assistants, technical support over product manuals, and the search of legal and administrative archives. Real inputs are often imperfect: users photograph pages with a phone under uneven light \cite{koushik2025robust}, scanned books contain recognition noise that even modern language models do not remove \cite{nguyen2025gec}, and historical pages need restoration before text can be read \cite{guan2025preocr}. These conditions show that a document system is judged on realistic input and not on clean renderings only. They also show that the quality of the evidence handed to the final answer step cannot be taken for granted.
 
-Real documents are often long. Reports, manuals and papers have dozens of pages, and the evidence for one question can be a table on one page and a chart on another. MMLongBench-Doc \cite{ma2024mmlongbench} is a benchmark for this setting: its documents have 49.4 pages on average, and about a quarter of its questions cannot be answered from the document at all. Even strong VLMs make many mistakes on it \cite{ma2024mmlongbench,comanici2025gemini}. A long document poses two problems. The system must first find the pages and the page elements that hold the evidence, and it must then turn this evidence into one correct answer.
+Research on this problem has moved quickly through three stages. Early pipelines ran optical character recognition (OCR) and fed the words and their positions to a language model, which loses fine layout cues and passes recognition errors down the pipeline \cite{huang2022layoutlmv3}. OCR-free models then read the page image directly \cite{kim2022donut}, and today's VLMs accept several page images at once. For long documents, however, feeding all pages to one model scales poorly because of the cost of attention over long inputs and the tendency of models to overlook content in the middle of a long context \cite{ma2024mmlongbench,deng2025longdocurl}. Retrieval-based systems reduce this cost by selecting a few pages before answering \cite{santhanam2022colbertv2,faysse2024colpali,yu2024visrag,tanaka2025vdocrag}, yet they suffer from retrieval errors: on MMLongBench-Doc, Gemini-2.5-Pro recalls only 68\% of the evidence pages, and ColBERT and ColPali reach a Recall@10 of only 55.3\% \cite{zhu2025doclens}. Even on the right page, a detail inside a chart or a table can be lost in a full-page view, much like reading a map without a magnifying glass \cite{zhu2025doclens,slideagent}.
 
-Recent work splits this task between several steps or agents \cite{zhu2025doclens,jain2025simpledoc,han2025mdocagent,slideagent,orca,docvstar}. DocLens \cite{zhu2025doclens} is a strong example. Its Lens Module finds the evidence pages and crops tables and figures from them. Its Reasoning Module then samples several candidate answers with an Answer Sampler, and an Adjudicator reads the candidates and chooses the final answer. DocLens reaches 67.6\% accuracy on MMLongBench-Doc with Gemini-2.5-Pro and 61.1\% with Qwen3-VL-8B on a sample of 200 questions \cite{zhu2025doclens}. Its own ablation shows that the whole Reasoning Module adds only 0.6 points for Gemini-2.5-Pro (67.0 without it and 67.6 with it) \cite{zhu2025doclens}. This raises a question about the last step: how much does the Adjudicator add, and when does it add it?
+The most recent work therefore divides the task between several agents. SlideAgent builds hierarchical knowledge at the document, page and element levels and surpasses its backbone models by 7.9\% and 9.8\% for proprietary and open-source models, respectively \cite{slideagent}. Doc-V* treats document VQA as sequential evidence gathering, starting from a thumbnail overview and then fetching pages actively, and it improves out-of-domain accuracy by up to 47.9\% over a retrieval baseline after training with imitation and reinforcement learning \cite{docvstar}. ORCA decomposes a query into reasoning steps, routes each step to a specialized agent and refines the answer iteratively \cite{orca}. SimpleDoc retrieves pages and refines the query over several rounds \cite{jain2025simpledoc}. DocLens, which is directly related to our work, adds a Lens Module with a Page Navigator and an Element Localizer that reach near-perfect evidence recall and crop the relevant tables and figures. Its Reasoning Module then follows a sampling-adjudication process: an Answer Sampler proposes several candidate answers, and an Adjudicator selects the final one \cite{zhu2025doclens}. This design reaches the best published results on MMLongBench-Doc and, for the first time, surpasses human experts on parts of it \cite{zhu2025doclens}. Its sampling-adjudication step follows the idea of combining several reasoning paths \cite{wang2023selfconsistency,wei2022cot} and of asking a language model to judge candidate answers \cite{zheng2023judging}.
 
-The Adjudicator has three weaknesses. It runs on every question, so it adds one more model call everywhere. It reads only the text of the candidate analyses and answers and never sees the document pages, so it cannot check a candidate against the evidence. And it can overturn an answer that was already correct. ORCA reports the same effect for its verification stages: 12\% of 100 analyzed failures are over-refinement, where a later stage overrides a correct answer, and ORCA skips its debate stages when two of its agents agree, which happens in 77\% of its cases \cite{orca}. In our reproduction of DocLens with Qwen3-VL-8B, the eight sampled answers agree on 48\% of the questions, the text-only Adjudicator and the majority vote give a different score on only 4.5\% of the questions, and yet for 15.5\% of the questions a correct candidate exists but the final answer is wrong. Whether the Adjudicator is needed, and what it should see, has not been studied for this kind of pipeline.
+The research problem we study begins after the evidence has been found. Once a sampling-based document agent holds several candidate answers, it must decide which one to return, and each design choice at this step affects both the accuracy and the cost of the system. In DocLens, the Adjudicator runs on every question and reads only the text of the candidate analyses, never the document pages. Its own ablation shows that the whole Reasoning Module adds only 0.6 points for Gemini-2.5-Pro (67.0 without it and 67.6 with it) \cite{zhu2025doclens}, which raises two questions that no existing document agent answers: when does the final decision step add value, and what should the decision maker be shown?
 
-These observations suggest two changes. First, the Adjudicator is not needed when the candidates agree. Second, when they disagree, the Adjudicator should look at the pages. We propose gated visual adjudication. An agreement gate counts how many of the $k=8$ sampled answers agree and returns the majority answer when all of them agree. When they disagree, a visual Adjudicator reads the evidence pages together with the candidate answers and chooses one. The method needs no training and does not change the DocLens prompts for the Lens Module or the Answer Sampler. With Qwen3-VL-8B on 200 MMLongBench-Doc questions, it calls the Adjudicator on 52\% of the questions instead of all of them and raises the accuracy from 56.3\% to 57.3\%, with the largest gains on table and figure questions, at the price of 6.7\% more tokens. The gain is small, and we report its confidence interval.
+The literature points to a gap here. SlideAgent, Doc-V* and DocLens all commit to an answer on every query \cite{slideagent,docvstar,zhu2025doclens}, and evidence from ORCA suggests that this is not harmless: 12\% of its analyzed failures are over-refinement, where a verification stage overrides an answer that was already correct, and ORCA skips its debate stages when two agents agree, which happens in 77\% of its cases \cite{orca}. Revising an answer without new information is known to hurt in language models \cite{huang2024selfcorrect}, while the agreement between sampled answers is a known signal of uncertainty and hallucination \cite{kuhn2023semantic,manakul2023selfcheckgpt}, and adjusting verbal uncertainty at inference time reduces confident hallucinations in short-form question answering by about 30\% \cite{ji2025verbal}. Cascades that call an expensive model only when needed are likewise a proven way to save cost \cite{chen2024frugalgpt}. Yet this line of work has been developed for text-only language models, and no study has used the agreement of sampled answers to decide when a document agent needs an adjudicator, or has given that adjudicator the pages. Our reproduction of DocLens with Qwen3-VL-8B motivates this question: the eight sampled answers agree on 48\% of the questions, the text-only Adjudicator and the majority vote score differently on only 4.5\% of the questions, and still for 15.5\% of the questions a correct candidate exists but the final answer is wrong.
 
-\begin{itemize}
-  \item A formal treatment of the decision step of sampling-based document agents, with closed-form expressions for the accuracy change and the expected token cost of an agreement gate and a condition under which a gate is lossless.
-  \item A unanimity-gated visual Adjudicator that conditions on the retrieved evidence and selects among the candidate answers, without extra parameters and without training.
-  \item A controlled evaluation on MMLongBench-Doc with Qwen3-VL-8B, covering a reproduction of the vanilla, OCR and DocLens baselines, an analysis of accuracy by sample agreement, a candidate-ceiling and error-source analysis, and paired-bootstrap confidence intervals.
-\end{itemize}
+To address this gap, we propose gated visual adjudication. An agreement gate counts how many of the $k=8$ sampled answers agree and returns the majority answer without further processing when all of them agree. When they disagree, a visual Adjudicator reads the evidence pages together with the candidate analyses and answers, and chooses one of the candidates or abstains. The method requires no training and leaves the DocLens prompts for the Lens Module and the Answer Sampler unchanged. With Qwen3-VL-8B on 200 MMLongBench-Doc questions, it calls the Adjudicator on 52\% of the questions instead of all of them and raises the accuracy from 56.3\% to 57.3\%, with the largest gains on table and figure questions, at the price of 6.7\% more tokens; the gain is small, and we report its confidence interval. Our contributions are as follows. We give a formal treatment of the decision step of sampling-based document agents, with closed-form expressions for the accuracy change and the token cost of an agreement gate and a condition under which a gate is lossless. We introduce a unanimity-gated visual Adjudicator that conditions on the retrieved evidence without extra parameters or training. We present a controlled evaluation on MMLongBench-Doc with Qwen3-VL-8B, covering reproductions of the vanilla, OCR and DocLens baselines, an analysis of accuracy by sample agreement, a candidate-ceiling and error-source analysis, and paired-bootstrap confidence intervals. The remainder of this paper is organized as follows. Section~\ref{sec:formulation} formalizes the problem, Section~\ref{sec:method} presents the method, Section~\ref{sec:experiments} reports the experiments, Section~\ref{sec:analysis} analyzes the results, Section~\ref{sec:related} reviews related work, and Section~\ref{sec:conclusion} concludes.
 
 \section{Problem Formulation}
 \label{sec:formulation}
@@ -499,29 +495,93 @@ R.~Tanaka, K.~Nishida, K.~Nishida, T.~Hasegawa, I.~Saito, and K.~Saito,
   images,'' in \emph{Proceedings of the AAAI Conference on Artificial
   Intelligence}, 2023.
 
-\bibitem{bai2025qwen25vl}
-S.~Bai \emph{et~al.}, ``{Qwen2.5-VL} technical report,'' \emph{arXiv preprint
-  arXiv:2502.13923}, 2025.
+\bibitem{tito2023mpdocvqa}
+R.~Tito, D.~Karatzas, and E.~Valveny, ``Hierarchical multimodal transformers
+  for multipage {DocVQA},'' \emph{Pattern Recognition}, vol. 144, p. 109834,
+  2023.
 
-\bibitem{bai2025qwen3vl}
-------, ``{Qwen3-VL} technical report,'' \emph{arXiv preprint
-  arXiv:2511.21631}, 2025.
+\bibitem{vanlandeghem2023dude}
+J.~Van~Landeghem, R.~Tito, {\L}.~Borchmann, M.~Pietruszka \emph{et~al.},
+  ``Document understanding dataset and evaluation ({DUDE}),'' in
+  \emph{Proceedings of the IEEE/CVF International Conference on Computer Vision
+  (ICCV)}, 2023.
 
-\bibitem{comanici2025gemini}
-G.~Comanici, E.~Bieber, M.~Schaekermann, I.~Pasupat \emph{et~al.}, ``Gemini
-  2.5: Pushing the frontier with advanced reasoning, multimodality, long
-  context, and next generation agentic capabilities,'' \emph{arXiv preprint
-  arXiv:2507.06261}, 2025.
+\bibitem{slideagent}
+Y.~Jin, R.~Kaur, Z.~Zeng, S.~Ganesh, and S.~Kumar, ``{SlideAgent}: Hierarchical
+  agentic framework for multi-page visual document understanding,'' in
+  \emph{Proceedings of the 64th Annual Meeting of the Association for
+  Computational Linguistics (Volume 1: Long Papers)}, 2026.
+
+\bibitem{zhu2025doclens}
+D.~Zhu, R.~Meng, J.~Chen, S.~Li, T.~Pfister, and J.~Yoon, ``{DocLens}: A
+  tool-augmented multi-agent framework for long visual document
+  understanding,'' in \emph{Proceedings of the 64th Annual Meeting of the
+  Association for Computational Linguistics (Volume 1: Long Papers)}, 2026, pp.
+  26\,804--26\,829.
 
 \bibitem{ma2024mmlongbench}
 Y.~Ma \emph{et~al.}, ``{MMLongBench-Doc}: Benchmarking long-context document
   understanding with visualizations,'' in \emph{Advances in Neural Information
   Processing Systems (NeurIPS), Datasets and Benchmarks Track}, 2024.
 
-\bibitem{zhu2025doclens}
-D.~Zhu, R.~Meng, J.~Chen, S.~Li, T.~Pfister, and J.~Yoon, ``{DocLens}: A
-  tool-augmented multi-agent framework for long visual document
-  understanding,'' \emph{arXiv preprint arXiv:2511.11552}, 2025.
+\bibitem{koushik2025robust}
+K.~S. Koushik, B.~J.~B. Nair, N.~S. Rani, and M.~Javed, ``Robust classification
+  of smartphone captured handwritten document images using deep learning,''
+  \emph{IEEE Access}, vol.~13, 2025.
+
+\bibitem{nguyen2025gec}
+P.~T. Nguyen, B.~Nuss, R.~Dressler, and K.~Ovens, ``A small-scale evaluation of
+  large language models used for grammatical error correction in a {German}
+  children's literature corpus,'' \emph{Applied Sciences}, vol.~15, no.~5, p.
+  2476, 2025.
+
+\bibitem{guan2025preocr}
+S.~Guan \emph{et~al.}, ``{PreP-OCR}: A complete pipeline for document image
+  restoration and enhanced {OCR} accuracy,'' in \emph{Proceedings of the 63rd
+  Annual Meeting of the Association for Computational Linguistics (Volume 1:
+  Long Papers)}, 2025, pp. 15\,413--15\,425.
+
+\bibitem{deng2025longdocurl}
+C.~Deng, J.~Yuan, P.~Bu, P.~Wang, Z.-Z. Li, J.~Xu, X.-H. Li, Y.~Gao, J.~Song,
+  B.~Zheng, and C.-L. Liu, ``{LongDocURL}: a comprehensive multimodal long
+  document benchmark integrating understanding, reasoning, and locating,'' in
+  \emph{Proceedings of the 63rd Annual Meeting of the Association for
+  Computational Linguistics (ACL)}, 2025, pp. 1135--1159.
+
+\bibitem{santhanam2022colbertv2}
+K.~Santhanam, O.~Khattab, J.~Saad-Falcon, C.~Potts, and M.~Zaharia,
+  ``{ColBERTv2}: Effective and efficient retrieval via lightweight late
+  interaction,'' in \emph{Proceedings of the 2022 Conference of the North
+  American Chapter of the Association for Computational Linguistics: Human
+  Language Technologies}, 2022.
+
+\bibitem{faysse2024colpali}
+M.~Faysse, H.~Sibille, T.~Wu, B.~Omrani, G.~Viaud, C.~Hudelot, and P.~Colombo,
+  ``{ColPali}: Efficient document retrieval with vision language models,'' in
+  \emph{International Conference on Learning Representations (ICLR)}, 2025.
+
+\bibitem{yu2024visrag}
+S.~Yu, C.~Tang, B.~Xu, J.~Cui \emph{et~al.}, ``{VisRAG}: Vision-based
+  retrieval-augmented generation on multi-modality documents,'' in
+  \emph{International Conference on Learning Representations (ICLR)}, 2025.
+
+\bibitem{tanaka2025vdocrag}
+R.~Tanaka, T.~Iki, T.~Hasegawa, K.~Nishida, K.~Saito, and J.~Suzuki,
+  ``{VDocRAG}: Retrieval-augmented generation over visually-rich documents,''
+  in \emph{Proceedings of the IEEE/CVF Conference on Computer Vision and
+  Pattern Recognition (CVPR)}, 2025.
+
+\bibitem{docvstar}
+Y.~Zheng \emph{et~al.}, ``{Doc-V*}: Coarse-to-fine interactive visual reasoning
+  for multi-page document {VQA},'' in \emph{Proceedings of the 64th Annual
+  Meeting of the Association for Computational Linguistics (Volume 1: Long
+  Papers)}, 2026, pp. 45\,901--45\,923.
+
+\bibitem{orca}
+A.~Lassoued, M.~A. Souibgui, and Y.~Kessentini, ``{ORCA}: Orchestrated
+  reasoning with collaborative agents for document visual question answering,''
+  in \emph{Proceedings of the IEEE/CVF Conference on Computer Vision and
+  Pattern Recognition (CVPR)}, 2026.
 
 \bibitem{jain2025simpledoc}
 C.~Jain \emph{et~al.}, ``{SimpleDoc}: Multi-modal document understanding with
@@ -529,25 +589,27 @@ C.~Jain \emph{et~al.}, ``{SimpleDoc}: Multi-modal document understanding with
   the Conference on Empirical Methods in Natural Language Processing (EMNLP)},
   2025, pp. 28\,410--28\,427.
 
-\bibitem{han2025mdocagent}
-S.~Han, P.~Xia, R.~Zhang, T.~Sun, Y.~Li, H.~Zhu, and H.~Yao, ``{MDocAgent}: A
-  multi-modal multi-agent framework for document understanding,'' \emph{arXiv
-  preprint arXiv:2503.13964}, 2025.
+\bibitem{wang2023selfconsistency}
+X.~Wang, J.~Wei, D.~Schuurmans, Q.~Le, E.~Chi, S.~Narang, A.~Chowdhery, and
+  D.~Zhou, ``Self-consistency improves chain of thought reasoning in language
+  models,'' in \emph{International Conference on Learning Representations
+  (ICLR)}, 2023.
 
-\bibitem{slideagent}
-Y.~Jin, R.~Kaur, Z.~Zeng, S.~Ganesh, and S.~Kumar, ``{SlideAgent}: Hierarchical
-  agentic framework for multi-page visual document understanding,'' \emph{arXiv
-  preprint arXiv:2510.26615}, 2025.
+\bibitem{wei2022cot}
+J.~Wei, X.~Wang, D.~Schuurmans, M.~Bosma, B.~Ichter, F.~Xia, E.~Chi, Q.~Le, and
+  D.~Zhou, ``Chain-of-thought prompting elicits reasoning in large language
+  models,'' in \emph{Advances in Neural Information Processing Systems
+  (NeurIPS)}, 2022.
 
-\bibitem{orca}
-A.~Lassoued, M.~A. Souibgui, and Y.~Kessentini, ``{ORCA}: Orchestrated
-  reasoning with collaborative agents for document visual question answering,''
-  \emph{arXiv preprint arXiv:2603.02438}, 2026.
+\bibitem{zheng2023judging}
+L.~Zheng, W.-L. Chiang, Y.~Sheng \emph{et~al.}, ``Judging {LLM}-as-a-judge with
+  {MT-Bench} and chatbot arena,'' in \emph{Advances in Neural Information
+  Processing Systems (NeurIPS), Datasets and Benchmarks Track}, 2023.
 
-\bibitem{docvstar}
-Y.~Zheng \emph{et~al.}, ``{Doc-V*}: Coarse-to-fine interactive visual reasoning
-  for multi-page document {VQA},'' \emph{arXiv preprint arXiv:2604.13731},
-  2026.
+\bibitem{huang2024selfcorrect}
+J.~Huang, X.~Chen, S.~Mishra, H.~S. Zheng, A.~W. Yu, X.~Song, and D.~Zhou,
+  ``Large language models cannot self-correct reasoning yet,'' in
+  \emph{International Conference on Learning Representations (ICLR)}, 2024.
 
 \bibitem{kuhn2023semantic}
 L.~Kuhn, Y.~Gal, and S.~Farquhar, ``Semantic uncertainty: Linguistic
@@ -560,6 +622,17 @@ P.~Manakul, A.~Liusie, and M.~J.~F. Gales, ``{SelfCheckGPT}: Zero-resource
   \emph{Proceedings of the 2023 Conference on Empirical Methods in Natural
   Language Processing (EMNLP)}, 2023, pp. 9004--9017.
 
+\bibitem{ji2025verbal}
+Z.~Ji, L.~Yu \emph{et~al.}, ``Calibrating verbal uncertainty as a linear
+  feature to reduce hallucinations,'' in \emph{Proceedings of the 2025
+  Conference on Empirical Methods in Natural Language Processing}, 2025, pp.
+  3769--3793.
+
+\bibitem{chen2024frugalgpt}
+L.~Chen, M.~Zaharia, and J.~Zou, ``{FrugalGPT}: How to use large language
+  models while reducing cost and improving performance,'' \emph{Transactions on
+  Machine Learning Research}, 2024.
+
 \bibitem{jiang2021calibration}
 Z.~Jiang, J.~Araki, H.~Ding, and G.~Neubig, ``How can we know when language
   models know? on the calibration of language models for question answering,''
@@ -570,10 +643,9 @@ Z.~Jiang, J.~Araki, H.~Ding, and G.~Neubig, ``How can we know when language
 S.~Kadavath, T.~Conerly, A.~Askell \emph{et~al.}, ``Language models (mostly)
   know what they know,'' \emph{arXiv preprint arXiv:2207.05221}, 2022.
 
-\bibitem{zheng2023judging}
-L.~Zheng, W.-L. Chiang, Y.~Sheng \emph{et~al.}, ``Judging {LLM}-as-a-judge with
-  {MT-Bench} and chatbot arena,'' in \emph{Advances in Neural Information
-  Processing Systems (NeurIPS), Datasets and Benchmarks Track}, 2023.
+\bibitem{bai2025qwen3vl}
+S.~Bai \emph{et~al.}, ``{Qwen3-VL} technical report,'' \emph{arXiv preprint
+  arXiv:2511.21631}, 2025.
 
 \bibitem{kwon2023vllm}
 W.~Kwon, Z.~Li, S.~Zhuang, Y.~Sheng \emph{et~al.}, ``Efficient memory
@@ -585,6 +657,12 @@ W.~Kwon, Z.~Li, S.~Zhuang, Y.~Sheng \emph{et~al.}, ``Efficient memory
 B.~Wang \emph{et~al.}, ``{MinerU}: An open-source solution for precise document
   content extraction,'' \emph{arXiv preprint arXiv:2409.18839}, 2024.
 
+\bibitem{comanici2025gemini}
+G.~Comanici, E.~Bieber, M.~Schaekermann, I.~Pasupat \emph{et~al.}, ``Gemini
+  2.5: Pushing the frontier with advanced reasoning, multimodality, long
+  context, and next generation agentic capabilities,'' \emph{arXiv preprint
+  arXiv:2507.06261}, 2025.
+
 \bibitem{yu2025mact}
 X.~Yu, Z.~Chen, Y.~Zhang, S.~Lu \emph{et~al.}, ``Visual document understanding
   and question answering: A multi-agent collaboration framework with test-time
@@ -595,53 +673,23 @@ J.~Cho, D.~Mahata, O.~{\.I}rsoy, Y.~He, and M.~Bansal, ``{M3DocRAG}:
   Multi-modal retrieval is what you need for multi-page multi-document
   understanding,'' \emph{arXiv preprint arXiv:2411.04952}, 2024.
 
-\bibitem{tito2023mpdocvqa}
-R.~Tito, D.~Karatzas, and E.~Valveny, ``Hierarchical multimodal transformers
-  for multipage {DocVQA},'' \emph{Pattern Recognition}, vol. 144, p. 109834,
-  2023.
-
-\bibitem{vanlandeghem2023dude}
-J.~Van~Landeghem, R.~Tito, {\L}.~Borchmann, M.~Pietruszka \emph{et~al.},
-  ``Document understanding dataset and evaluation ({DUDE}),'' in
-  \emph{Proceedings of the IEEE/CVF International Conference on Computer Vision
-  (ICCV)}, 2023.
+\bibitem{han2025mdocagent}
+S.~Han, P.~Xia, R.~Zhang, T.~Sun, Y.~Li, H.~Zhu, and H.~Yao, ``{MDocAgent}: A
+  multi-modal multi-agent framework for document understanding,'' \emph{arXiv
+  preprint arXiv:2503.13964}, 2025.
 
 \bibitem{zou2024docbench}
 A.~Zou, W.~Yu, H.~Zhang, K.~Ma, D.~Cai, Z.~Zhang, H.~Zhao, and D.~Yu,
   ``{DocBench}: A benchmark for evaluating {LLM}-based document reading
   systems,'' \emph{arXiv preprint arXiv:2407.10701}, 2024.
 
-\bibitem{deng2025longdocurl}
-C.~Deng, J.~Yuan, P.~Bu, P.~Wang, Z.-Z. Li, J.~Xu, X.-H. Li, Y.~Gao, J.~Song,
-  B.~Zheng, and C.-L. Liu, ``{LongDocURL}: a comprehensive multimodal long
-  document benchmark integrating understanding, reasoning, and locating,'' in
-  \emph{Proceedings of the 63rd Annual Meeting of the Association for
-  Computational Linguistics (ACL)}, 2025, pp. 1135--1159.
+\bibitem{bai2025qwen25vl}
+S.~Bai \emph{et~al.}, ``{Qwen2.5-VL} technical report,'' \emph{arXiv preprint
+  arXiv:2502.13923}, 2025.
 
 \bibitem{hurst2024gpt4o}
 A.~Hurst \emph{et~al.}, ``{GPT-4o} system card,'' \emph{arXiv preprint
   arXiv:2410.21276}, 2024.
-
-\bibitem{santhanam2022colbertv2}
-K.~Santhanam, O.~Khattab, J.~Saad-Falcon, C.~Potts, and M.~Zaharia,
-  ``{ColBERTv2}: Effective and efficient retrieval via lightweight late
-  interaction,'' \emph{arXiv preprint arXiv:2112.01488}, 2021.
-
-\bibitem{faysse2024colpali}
-M.~Faysse, H.~Sibille, T.~Wu, B.~Omrani, G.~Viaud, C.~Hudelot, and P.~Colombo,
-  ``{ColPali}: Efficient document retrieval with vision language models,''
-  \emph{arXiv preprint arXiv:2407.01449}, 2024.
-
-\bibitem{yu2024visrag}
-S.~Yu, C.~Tang, B.~Xu, J.~Cui \emph{et~al.}, ``{VisRAG}: Vision-based
-  retrieval-augmented generation on multi-modality documents,'' \emph{arXiv
-  preprint arXiv:2410.10594}, 2024.
-
-\bibitem{tanaka2025vdocrag}
-R.~Tanaka, T.~Iki, T.~Hasegawa, K.~Nishida, K.~Saito, and J.~Suzuki,
-  ``{VDocRAG}: Retrieval-augmented generation over visually-rich documents,''
-  in \emph{Proceedings of the IEEE/CVF Conference on Computer Vision and
-  Pattern Recognition (CVPR)}, 2025.
 
 \bibitem{gao2023rag}
 Y.~Gao, Y.~Xiong, X.~Gao, K.~Jia \emph{et~al.}, ``Retrieval-augmented
@@ -658,35 +706,12 @@ S.~Yao, J.~Zhao, D.~Yu, N.~Du, I.~Shafran, K.~Narasimhan, and Y.~Cao,
   ``{ReAct}: Synergizing reasoning and acting in language models,'' in
   \emph{International Conference on Learning Representations (ICLR)}, 2023.
 
-\bibitem{wang2023selfconsistency}
-X.~Wang, J.~Wei, D.~Schuurmans, Q.~Le, E.~Chi, S.~Narang, A.~Chowdhery, and
-  D.~Zhou, ``Self-consistency improves chain of thought reasoning in language
-  models,'' in \emph{International Conference on Learning Representations
-  (ICLR)}, 2023.
-
-\bibitem{wei2022cot}
-J.~Wei, X.~Wang, D.~Schuurmans, M.~Bosma, B.~Ichter, F.~Xia, E.~Chi, Q.~Le, and
-  D.~Zhou, ``Chain-of-thought prompting elicits reasoning in large language
-  models,'' in \emph{Advances in Neural Information Processing Systems
-  (NeurIPS)}, 2022.
-
 \bibitem{du2024debate}
 Y.~Du, S.~Li, A.~Torralba, J.~B. Tenenbaum, and I.~Mordatch, ``Improving
   factuality and reasoning in language models through multiagent debate,'' in
   \emph{Proceedings of the 41st International Conference on Machine Learning
   (ICML)}, 2024, pp. 11\,733--11\,763.
 
-\bibitem{huang2024selfcorrect}
-J.~Huang, X.~Chen, S.~Mishra, H.~S. Zheng, A.~W. Yu, X.~Song, and D.~Zhou,
-  ``Large language models cannot self-correct reasoning yet,'' in
-  \emph{International Conference on Learning Representations (ICLR)}, 2024.
-
-\bibitem{chen2024frugalgpt}
-L.~Chen, M.~Zaharia, and J.~Zou, ``{FrugalGPT}: How to use large language
-  models while reducing cost and improving performance,'' \emph{Transactions on
-  Machine Learning Research}, 2024.
-
 \end{thebibliography}
-
 
 \end{document}
