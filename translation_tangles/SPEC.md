@@ -371,3 +371,9 @@ paper's method (a labelled extra); some directions land above the paper (Medical
 first line / with the instruction: general 16.4 / 21.0 / 23.1 (paper 11.7), literature 6.7 / 9.2 / 11.8, law 22.1 / 34.3 / 35.4,
 medical 17.8 / 31.6 / 33.6. On the general suite the paper's Llama-3.1-8B numbers are LOW (de-en 24.7, TER 106), and the instruction
 moves us further from them (de-en 44.2, TER 43), so the improved prompt helps Law/Medical match the paper but not the general suite.
+
+**Gemma-2-9B full 24 directions with the instruction** (`gemma2-9b@sys@eager`, bfloat16, eager attention, transformers backend, 12 of 12,000
+outputs hit the token cap). Mean BLEU 26.82 vs paper 21.39 (as generated without the instruction: 12.97); mean |diff| to the paper 8.69
+(was 9.55), correlation 0.61, 7 of 24 directions within 5 BLEU. The instruction removes the extra text but the model then overshoots the
+paper (X->en 32.1 vs 27.0, en->X 22.4 vs 16.6; en-zh 41 vs 13, en-et 19 vs 3, en-cs 20 vs 5) while fi-en stays below (25 vs 40).
+Net: the instruction trades an undershoot for an overshoot; the mean distance to the paper is not materially smaller.
