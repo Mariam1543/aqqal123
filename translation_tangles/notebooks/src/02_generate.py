@@ -81,8 +81,11 @@ REGISTRY = {
     "llama3-8b": dict(hf="meta-llama/Meta-Llama-3-8B-Instruct", size="medium", suites=GEN),
     "llama-3.1-8b": dict(hf="meta-llama/Llama-3.1-8B-Instruct", size="medium", suites=GEN + DOM),
     # large (> 30B), 4-bit on Kaggle
+    # Mixtral AWQ is 23 GB, so on 2x T4 (2 x 15 GB) almost nothing is left for the KV cache (smoke test: 0.07 GiB left,
+    # 0.25 GiB needed). A shorter context, no CUDA graphs and 95% memory use leave room for it.
     "mixtral-8x7b": dict(hf="mistralai/Mixtral-8x7B-Instruct-v0.1", size="large", suites=GEN + DOM,
-                         awq="TheBloke/Mixtral-8x7B-Instruct-v0.1-AWQ"),
+                         awq="TheBloke/Mixtral-8x7B-Instruct-v0.1-AWQ", max_model_len=3072,
+                         vllm=dict(gpu_memory_utilization=0.95, enforce_eager=True)),
     "qwen-2.5-32b": dict(hf="Qwen/Qwen2.5-32B-Instruct", size="large", suites=DOM,
                          awq="Qwen/Qwen2.5-32B-Instruct-AWQ"),
     "deepseek-r1-distill-32b": dict(hf="deepseek-ai/DeepSeek-R1-Distill-Qwen-32B", size="large", suites=DOM,
@@ -109,7 +112,7 @@ MODE = PROMPT_MODE or cfg.get("prompt", "chat")
 RAW = MODE == "raw"
 RUN_NAME = MODEL if MODE == cfg.get("prompt", "chat") else f"{MODEL}@{MODE}"
 DTYPE = cfg.get("dtype", "float16")
-MAX_MODEL_LEN = 6144 if REASONING else 4096
+MAX_MODEL_LEN = cfg.get("max_model_len", 6144 if REASONING else 4096)
 MAX_NEW = MAX_NEW_TOKENS or (2048 if REASONING else 400)
 if IGNORE_EOS or MAX_NEW_TOKENS:
     RUN_NAME += "@" + ("noeos" if IGNORE_EOS else "max") + str(MAX_NEW)
@@ -195,7 +198,7 @@ if backend in ("auto", "vllm"):
         llm = LLM(model=weights, tokenizer=cfg["hf"], dtype=DTYPE,
                   tensor_parallel_size=1 if small else min(2, n_gpu),
                   quantization="awq" if cfg.get("awq") else None,
-                  max_model_len=MAX_MODEL_LEN, gpu_memory_utilization=0.90,
+                  max_model_len=MAX_MODEL_LEN, **{"gpu_memory_utilization": 0.90, **cfg.get("vllm", {})},
                   seed=SEED, trust_remote_code=True)
         backend = "vllm"
     except Exception as e:
@@ -205,6 +208,8 @@ if backend in ("auto", "vllm"):
         backend = "hf"
 
 if backend == "hf":
+    if cfg["size"] == "large":   # 4-bit loading in transformers needs bitsandbytes
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "bitsandbytes"], check=False)
     from transformers import AutoModelForCausalLM, BitsAndBytesConfig
     quant = None
     if cfg["size"] == "large":

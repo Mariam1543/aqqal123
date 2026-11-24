@@ -377,3 +377,8 @@ outputs hit the token cap). Mean BLEU 26.82 vs paper 21.39 (as generated without
 (was 9.55), correlation 0.61, 7 of 24 directions within 5 BLEU. The instruction removes the extra text but the model then overshoots the
 paper (X->en 32.1 vs 27.0, en->X 22.4 vs 16.6; en-zh 41 vs 13, en-et 19 vs 3, en-cs 20 vs 5) while fi-en stays below (25 vs 40).
 Net: the instruction trades an undershoot for an overshoot; the mean distance to the paper is not materially smaller.
+
+**Mixtral smoke test (23 Nov).** vLLM 0.33.0 loaded the 4-bit weights fine (11.5 GiB per T4, Marlin kernels) but stopped because
+only 0.07 GiB per GPU was left for the KV cache (0.25 GiB needed for 4096 tokens): the 23 GB model nearly fills 2 x 15 GB. The
+transformers fallback then failed on a missing `bitsandbytes`. The registry now gives Mixtral `max_model_len=3072`,
+`gpu_memory_utilization=0.95` and `enforce_eager=True` (no CUDA-graph memory), and the fallback installs bitsandbytes. Untested.
