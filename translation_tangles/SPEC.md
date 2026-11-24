@@ -382,3 +382,9 @@ Net: the instruction trades an undershoot for an overshoot; the mean distance to
 only 0.07 GiB per GPU was left for the KV cache (0.25 GiB needed for 4096 tokens): the 23 GB model nearly fills 2 x 15 GB. The
 transformers fallback then failed on a missing `bitsandbytes`. The registry now gives Mixtral `max_model_len=3072`,
 `gpu_memory_utilization=0.95` and `enforce_eager=True` (no CUDA-graph memory), and the fallback installs bitsandbytes. Untested.
+
+**Mixtral smoke test, second attempt (24 Nov).** The memory fix works: vLLM 0.33.0 started (KV cache 1.26 GiB per T4, 20,596 tokens),
+`Backend: vllm`. But every output is garbage ("should should should ..." until the 400-token cap, 10 of 10 rows) so no Mixtral run was
+made on Kaggle. Likely cause, not verified: the 4-bit AWQ MoE kernels (Marlin) on a T4 (compute capability 7.5, below the 8.0 these
+kernels are built for). Plan: run Mixtral on an A100/H100 (university GPU), where the same weights are expected to work; check a
+smoke test there first.
