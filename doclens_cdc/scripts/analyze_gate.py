@@ -86,6 +86,7 @@ def case(r, k, prefix):
     adj = r.get(f"{prefix}adjudicator_tokens")
     return {
         "id": f"{r['doc_id']}||{r['question']}",
+        "doc": str(r["doc_id"]),
         "agreement": agreement,
         "maj": maj_score,
         "adj": float(r["final_score"]),
@@ -149,8 +150,9 @@ def pick_tau(rows):
 
 
 def cross_validated(rows, folds=5):
-    """Each question gets the gate decision of a tau chosen on the other folds."""
-    fold = [zlib.crc32(r["id"].encode()) % folds for r in rows]
+    """Each question gets the gate decision of a tau chosen on the other folds. Folds are made of
+    whole documents, so tau is never chosen on questions about the document it is applied to."""
+    fold = [zlib.crc32(r["doc"].encode()) % folds for r in rows]
     out = [None] * len(rows)
     chosen = []
     for f in range(folds):
@@ -185,10 +187,18 @@ def report(rows, n_imputed, fit, unscored):
     pct = lambda x: f"{100 * x:.1f}"
     saved = lambda m: f"{100 * (1 - m['tokens'] / b1['tokens']):.1f}%" if b1["tokens"] else "n/a"
     agree_all = np.mean([r["agreement"] == 1.0 for r in rows])
+    differ = np.mean([(r["maj"] >= CORRECT_AT) != (r["adj"] >= CORRECT_AT) for r in rows])
+    unan = [r for r in rows if r["agreement"] == 1.0 and r["maj"] < CORRECT_AT]
+    unanimous_wrong = len(unan) / len(rows)
+    fixed_unanimous = sum(r["adj"] >= CORRECT_AT for r in unan)
     L = [f"# Agreement gate around the Adjudicator (A1)", "",
          f"{len(rows)} questions with scored sampled answers (k = {rows[0]['k']})"
          + (f"; {unscored} without candidate scores were skipped" if unscored else "") + ".",
-         f"All k sampled answers agree on {pct(agree_all)}% of the questions.", ""]
+         f"All k sampled answers agree on {pct(agree_all)}% of the questions.",
+         f"B1 (Adjudicator) and B2 (majority) give a different score on {pct(differ)}% of the questions "
+         "(the gate can only change the result on these).",
+         f"All k answers agree but are wrong on {pct(unanimous_wrong)}% of the questions "
+         "(the gate skips the Adjudicator there; it fixed {0} of them).".format(fixed_unanimous), ""]
     if n_imputed:
         L += [f"Adjudicator tokens were not stored for {n_imputed} questions (earlier runs); they are estimated "
               f"from the Adjudicator prompt length (tokens = {fit[0]:.0f} + {fit[1]:.3f} x characters, fitted "
@@ -196,7 +206,7 @@ def report(rows, n_imputed, fit, unscored):
     L += ["| Method | Accuracy | Over-correction | Fix rate | Adjudicator rate | Tokens / question | Saved vs B1 |",
           "|---|---|---|---|---|---|---|"]
     for name, m in (("B1: always Adjudicator (DocLens)", b1), ("B2: majority vote", b2),
-                    (f"**A1: agreement gate** (tau by 5-fold CV)", a1)):
+                    (f"**A1: agreement gate** (tau by 5-fold CV over documents)", a1)):
         L.append(f"| {name} | {pct(m['acc'])} | {pct(m['over'])} | {pct(m['fix'])} | {pct(m['adj_rate'])} | "
                  f"{m['tokens']:,.0f} | {saved(m)} |")
     L.append(f"| Oracle gate (upper bound) | {pct(orc['acc'])} | | | | | |")
