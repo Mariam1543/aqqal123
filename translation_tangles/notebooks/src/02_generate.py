@@ -125,7 +125,10 @@ for prev in glob.glob(f"/kaggle/input/**/outputs/{RUN_NAME}", recursive=True):
 import subprocess, sys
 backend = BACKEND
 if backend in ("auto", "vllm"):
-    r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "vllm"], capture_output=True, text=True)
+    # nvidia-cutlass-dsl provides the `cutlass` module that recent vLLM imports during kernel warmup
+    # for every model (without it the engine fails with "No module named 'cutlass'").
+    r = subprocess.run([sys.executable, "-m", "pip", "install", "-q", "vllm", "nvidia-cutlass-dsl"],
+                       capture_output=True, text=True)
     if r.returncode != 0:
         print(r.stderr[-1500:])
         if backend == "vllm":
