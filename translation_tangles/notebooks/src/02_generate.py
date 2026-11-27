@@ -134,6 +134,24 @@ if backend in ("auto", "vllm"):
         if backend == "vllm":
             raise RuntimeError("vLLM install failed")
         backend = "hf"
+    else:
+        # nvidia-cutlass-dsl puts `cutlass` on sys.path through a .pth file, and .pth files are only read
+        # when Python starts, so the already-running notebook kernel would still not find it.
+        # Add the path by hand (and to PYTHONPATH for any worker process vLLM spawns).
+        import importlib, os
+        importlib.invalidate_caches()
+        import nvidia_cutlass_dsl
+        dsl = os.path.join(nvidia_cutlass_dsl.__path__[0], "dsl_packages")
+        if dsl not in sys.path:
+            sys.path.insert(0, dsl)
+        os.environ["PYTHONPATH"] = dsl + os.pathsep + os.environ.get("PYTHONPATH", "")
+        try:
+            import cutlass
+            print("cutlass DSL found at", dsl)
+        except Exception as e:
+            print("cutlass DSL could not be imported:", repr(e)[:500])
+            if backend == "vllm":
+                raise
 
 import torch
 from transformers import AutoTokenizer
